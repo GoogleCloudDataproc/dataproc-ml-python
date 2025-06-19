@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataproc-ml-python"
+version = "0.1.0"
+description = "A python library to ease MLOps for Dataproc customers"
+readme = "README.md"
+requires-python = ">=3.11"
+# Aligned with dependencies in 2.3 DPGCE ML image
+dependencies = [
+    "google-cloud-aiplatform~=1.88.0",
+    "pandas~=2.1.2",
+    "pyarrow",
+    "pyspark~=3.5.3",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+]
+dev = [
+    "pyink",
+]
+
+[tool.pyink]
+line-length = 80 # Default is 88

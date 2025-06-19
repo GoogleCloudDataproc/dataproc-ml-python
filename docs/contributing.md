@@ -25,7 +25,28 @@ Guidelines](https://opensource.google/conduct/).
 
 ## Contribution process
 
+### Setup
+1. It is recommended to do development in a separate virtual environment
+
+    ```shell
+    python3.11 -m venv <your env>
+    ```
+
+2. Install all the build, dev and test dependencies
+
+    ```shell
+    pip install ".[dev, test]"
+    ```
+
+3. Configure your IDE to the same venv interpreter
+
 ### Code Reviews
+1. Do run the linter and make sure all the tests pass before raising the PR
+    ```shell
+    pyink .
+    pytest .
+    ```
+2. Add the output of the test run in the PR description
 
 All submissions, including submissions by project members, require review. We
 use [GitHub pull requests](https://docs.github.com/articles/about-pull-requests)

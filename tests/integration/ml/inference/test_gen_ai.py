@@ -16,13 +16,18 @@ class TestGenAiModelHandler(unittest.TestCase):
         cls.spark.stop()
 
     def test_gen_ai(self):
-        pre_processor = lambda city: "Answer in single word. What is the airport code of largest airport in " + city
-        gen_ai_handler = (GenAiModelHandler()
-                          .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
-                          .location(os.getenv("GOOGLE_CLOUD_REGION"))
-                          .input_col("city")
-                          .output_col("predicted")
-                          .pre_processor(pre_processor))
+        pre_processor = (
+            lambda city: "Answer in single word. What is the airport code of largest airport in "
+            + city
+        )
+        gen_ai_handler = (
+            GenAiModelHandler()
+            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
+            .location(os.getenv("GOOGLE_CLOUD_REGION"))
+            .input_col("city")
+            .output_col("predicted")
+            .pre_processor(pre_processor)
+        )
         df = self.spark.createDataFrame(
             [("Bengaluru", "India"), ("London", "UK")], ["city", "country"]
         )
@@ -40,5 +45,5 @@ class TestGenAiModelHandler(unittest.TestCase):
         assert df2.exceptAll(df1).isEmpty()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

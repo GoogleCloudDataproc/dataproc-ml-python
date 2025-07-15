@@ -155,6 +155,11 @@ class BaseModelHandler(ABC):
         Returns:
             A new DataFrame with the prediction column added.
         """
+        if not self._input_col:
+            raise ValueError("Input column must be set using .input_col().")
+        if not self._output_col:
+            raise ValueError("Output column must be set using .output_col().")
+
         return df.withColumn(
             self._output_col,
             self._create_predict_udf()(col(self._input_col)),

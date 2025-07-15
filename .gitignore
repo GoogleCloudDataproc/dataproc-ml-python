@@ -1,0 +1,38 @@
+# Pyenv
+# Ignore the pyenv-managed virtual environment directory.
+# This assumes your virtual environment is created in the project root or a common location.
+# If your venv is named differently, adjust accordingly.
+# Common names include 'venv', '.venv', 'env', etc.
+venv/
+.venv/
+
+# Python compiled objects
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+dist/
+eggs/
+*.egg-info/
+.cache/
+
+# IDE-specific files (IntelliJ IDEA)
+# .idea directory for project settings, local history, etc.
+.idea/*
+
+*pytest_cache/*
+
+# OS-specific files
+.DS_Store
+
+.Trashes # macOS
+
+# Temporary files
+*~
+*.bak
+*.swp
+*.swo

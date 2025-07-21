@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 
 from pyspark.sql.types import StringType
@@ -9,6 +10,8 @@ from google.cloud import aiplatform
 from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
 from google.cloud.dataproc.ml.inference.base_model_handler import Model
 
+logger = logging.getLogger(__name__)
+
 
 class ModelProvider(Enum):
     """Enumeration for supported model providers."""
@@ -19,39 +22,33 @@ class ModelProvider(Enum):
 class GeminiModel(Model):
     """A concrete implementation of the Model interface for Vertex AI Gemini models."""
 
-    def __init__(self, model_name: str, api_batch_size: int):
+    def __init__(self, model_name: str):
         """Initializes the GeminiModel.
 
         Args:
-            model_name: The name of the Gemini model to use (e.g., "gemini-1.5-flash").
-            api_batch_size: The number of prompts to send in a single API call.
+            model_name: The name of the Gemini model to use (e.g., "gemini-2.5-flash").
         """
         self._underlying_model = GenerativeModel(model_name)
-        self._api_batch_size = api_batch_size
 
     def call(self, batch: pd.Series) -> pd.Series:
         """
-        Overrides the base method to send prompts to the Gemini API in a single batch.
-        This is significantly more efficient than making individual calls and handles
-        API limits by chunking large batches. If any API call fails or a prompt
-        is blocked, an exception will be raised, allowing Spark to handle the
-        task failure and retry.
+        Overrides the base method to send prompts to the Gemini API.
+        If any API call fails or a prompt is blocked, an exception will be raised,
+        allowing Spark to handle the task failure and retry.
         """
-        prompts = batch.tolist()
-
-        all_predictions = []
-        for i in range(0, len(prompts), self._api_batch_size):
-            chunk = prompts[i : i + self._api_batch_size]
-            # Let exceptions from the API call or blocked candidates propagate up.
-            response = self._underlying_model.generate_content(chunk)
-            predictions_chunk = [
-                candidate.text for candidate in response.candidates
-            ]
-            all_predictions.extend(predictions_chunk)
-
-        # This will raise an error if the number of predictions does not match
-        # the number of prompts, which is the desired behavior for data integrity.
-        return pd.Series(all_predictions, index=batch.index)
+        logger.debug("Sending requests to batch of size ", len(batch))
+        # Let exceptions from the API call or blocked candidates propagate up.
+        responses = [
+            self._underlying_model.generate_content(prompt)
+            for prompt in batch.tolist()
+        ]
+        assert len(responses) == len(batch), (
+            f"Mismatch between number of prompts ({len(batch)}) and "
+            f"responses ({len(responses)}). This indicates a potential API issue."
+        )
+        return pd.Series(
+            [response.text for response in responses], index=batch.index
+        )
 
 
 class GenAiModelHandler(BaseModelHandler):
@@ -62,13 +59,13 @@ class GenAiModelHandler(BaseModelHandler):
     It uses a builder pattern for configuration.
 
     Example usage:
-        handler = GenAiModelHandler()
-        result_df = handler.project("my-gcp-project") \\
-                           .location("us-central1") \\
-                           .model("gemini-1.5-flash") \\
-                           .input_col("prompts") \\
-                           .output_col("predictions") \\
-                           .transform(df)
+        result_df = GenAiModelHandler()
+                    .project("my-gcp-project")
+                    .location("us-central1")
+                    .model("gemini-2.5-flash") # Default
+                    .input_col("prompts")
+                    .output_col("predictions") # Default
+                    .transform(df)
     """
 
     def __init__(self):
@@ -76,7 +73,6 @@ class GenAiModelHandler(BaseModelHandler):
         self._project = None
         self._location = None
         self._model = "gemini-2.5-flash"
-        self._api_batch_size = 250
         self._provider = ModelProvider.GOOGLE
         self._return_type = StringType()
 
@@ -124,18 +120,6 @@ class GenAiModelHandler(BaseModelHandler):
         self._location = location
         return self
 
-    def set_api_batch_size(self, size: int) -> "GenAiModelHandler":
-        """Sets the batch size for API calls to the Gemini model.
-
-        Args:
-            size: The number of prompts to send in a single API request.
-
-        Returns:
-            The handler instance for method chaining.
-        """
-        self._api_batch_size = size
-        return self
-
     def _load_model(self) -> Model:
         """Loads the GeminiModel instance on each Spark executor."""
         if not self._project:
@@ -148,7 +132,8 @@ class GenAiModelHandler(BaseModelHandler):
             )
         if self._provider is ModelProvider.GOOGLE:
             aiplatform.init(project=self._project, location=self._location)
-            return GeminiModel(self._model, api_batch_size=self._api_batch_size)
+            logger.debug("Creating GenerativeModel client for calls to Gemini")
+            return GeminiModel(self._model)
         else:
             raise NotImplementedError(
                 f"Provider '{self._provider.name}' is not supported."

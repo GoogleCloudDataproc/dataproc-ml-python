@@ -4,7 +4,6 @@ from typing import Type, Optional, Callable
 
 import pandas as pd
 import torch
-from google.api_core import exceptions as gcp_exceptions
 from google.cloud.exceptions import NotFound
 
 from google.cloud import storage
@@ -193,32 +192,38 @@ class PyTorchModel(Model):
 
 class PyTorchModelHandler(BaseModelHandler):
     """
-    A handler for running inference with PyTorch models on Spark DataFrames.
-    Example:
+     A handler for running inference with PyTorch models on Spark DataFrames.
+     Example:
 
-    from google.cloud.dataproc.ml.inference import PyTorchModelHandler
-    import pyspark.pandas as ps
+    Example usage:
+    Load Full model saved in gcs:
+    result_df = PyTorchModelHandler()
+             .model_path("gs://test-bucket/test-model.pt")
+             .device("cpu") #optional
+             .input_col("input_col")
+             .output_col("prediction")
+             .pre_processor(preprocess_function) #optional
+             .set_return_type(ArrayType(FloatType()))
+             .transform(input_df)
 
-    # Create a PyTorch model handler
-    handler = PyTorchModelHandler()
+     Load state dict saved in gcs:
+     1. Define the model's class and constructor arguments
+       eg: For ResNet-18, passing weights=None initializes an empty model.
+     model_class = models.resnet18
+     model_kwargs = {"weights": None} # Or weights=False in older versions
 
-    # Set the GCS path to the saved PyTorch model
-    handler.model_path("gs://your-bucket/your-model.pt")
-
-    # (Optional) Set the device to load the model on
-    handler.device("cpu")
-
-    # (Optional) If loading a state_dict, set the model architecture
-    handler.set_model_architecture(YourModelClass)
-
-    # Create a Spark DataFrame
-    df = ps.DataFrame({"input_data": [[1.0, 2.0], [3.0, 4.0]]})
-
-    # Run inference on the DataFrame
-    df_with_predictions = df.apply(handler.run, axis=1, result_type="expand")
-
-    # show the dataframe
-    df_with_predictions.show()
+     # 2. Configure the handler
+     result_df = (
+         PyTorchModelHandler()
+         .model_path("gs://my-bucket/resnet18_statedict.pt")
+         .device("cpu") #optional
+         .set_model_architecture(model_class, **model_kwargs)
+         .input_col("features")
+         .output_col("predictions")
+         .pre_processor(preprocess_function) #optional
+         .set_return_type(ArrayType(FloatType()))
+         .transform(input_df)
+     )
     """
 
     def __init__(self):

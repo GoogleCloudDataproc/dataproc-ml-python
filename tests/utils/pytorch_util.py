@@ -15,8 +15,7 @@
 import io
 
 import torch
-from google.cloud import storage
-import urllib.parse
+
 
 import torchvision.transforms as transforms
 from PIL import Image
@@ -38,31 +37,6 @@ def save_pytorch_model_full_object(model: torch.nn.Module) -> bytes:
     torch.save(model, buffer)
     buffer.seek(0)
     return buffer.getvalue()
-
-
-def download_image_from_gcs(image_path: str) -> bytes:
-    """Downloads image bytes from GCS."""
-    parsed_path = urllib.parse.urlparse(image_path)
-    if parsed_path.scheme != "gs":
-        raise ValueError(
-            f"Unsupported GCS path scheme: {parsed_path.scheme}. Must be 'gs://'."
-        )
-
-    bucket_name = parsed_path.netloc
-    blob_name = parsed_path.path.lstrip("/")
-
-    if not bucket_name or not blob_name:
-        raise ValueError(
-            f"Invalid GCS path: '{image_path}'. Must be gs://bucket/object."
-        )
-
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_name)
-
-    image_bytes = blob.download_as_bytes()
-
-    return image_bytes
 
 
 def preprocess_real_image_data(image_bytes: bytes) -> torch.Tensor:

@@ -14,5 +14,6 @@
 
 from .gen_ai_model_handler import GenAiModelHandler
 from .pytorch_model_handler import PyTorchModelHandler
+from .tensorflow_model_handler import TensorFlowModelHandler
 
-__all__ = ("GenAiModelHandler", "PyTorchModelHandler")
+__all__ = ("GenAiModelHandler", "PyTorchModelHandler", "TensorFlowModelHandler")

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import io
-import urllib.parse
+
 from typing import Type, Optional, Callable
 
 import pandas as pd
@@ -23,6 +23,7 @@ from google.cloud.exceptions import NotFound
 from google.cloud import storage
 from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
 from google.cloud.dataproc.ml.inference.base_model_handler import Model
+from google.cloud.dataproc.ml.utils.gcs_utils import validate_and_parse_gcs_path
 
 
 class PyTorchModel(Model):
@@ -123,28 +124,6 @@ class PyTorchModel(Model):
             )
         return model_instance
 
-    def _validate_and_parse_gcs_path(self):
-        """Validates the GCS path format and extracts bucket and blob names."""
-        parsed_path = urllib.parse.urlparse(self._model_path)
-        if parsed_path.scheme != "gs":
-            raise ValueError(
-                f"Unsupported path scheme: {parsed_path.scheme}. Must be 'gs://'."
-            )
-
-        bucket_name = parsed_path.netloc
-        blob_name = parsed_path.path.lstrip("/")
-
-        if not bucket_name:
-            raise ValueError(
-                f"Invalid GCS path: '{self._model_path}'. Bucket name is missing."
-            )
-        if not blob_name:
-            raise ValueError(
-                f"Invalid GCS path: '{self._model_path}'. Object name is missing."
-            )
-
-        return bucket_name, blob_name
-
     def _download_gcs_blob_to_buffer(self, bucket_name, blob_name):
         """Downloads a GCS blob into an in-memory BytesIO buffer."""
         model_data_buffer = io.BytesIO()
@@ -167,17 +146,15 @@ class PyTorchModel(Model):
     def _load_model_from_gcs(self):
         """Loads the PyTorch model from GCS with verbose logging for debugging."""
 
-        bucket_name, blob_name = self._validate_and_parse_gcs_path()
+        bucket_name, blob_name = validate_and_parse_gcs_path(self._model_path)
 
         model_data_buffer = self._download_gcs_blob_to_buffer(
             bucket_name, blob_name
         )
 
         if self._model_class:
-
             return self._state_dict_model_load(model_data_buffer)
         else:
-
             return self._full_model_load(model_data_buffer)
 
     def call(self, batch: pd.Series) -> pd.Series:

@@ -27,8 +27,8 @@ from torchvision.models import resnet18
 
 from google.cloud import storage
 from google.cloud.dataproc.ml.inference import PyTorchModelHandler
+from tests.utils.gcs_util import download_image_from_gcs
 from tests.utils.pytorch_util import (
-    download_image_from_gcs,
     preprocess_real_image_data,
     save_pytorch_model_full_object,
     save_pytorch_model_state_dict,

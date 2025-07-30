@@ -1,7 +1,10 @@
+import asyncio
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 import pandas as pd
+import tenacity
+from google.api_core import exceptions
 from pyspark.sql.types import StringType
 
 from google.cloud.dataproc.ml.inference.gen_ai_model_handler import (
@@ -22,6 +25,7 @@ class TestGeminiModel(unittest.TestCase):
         """Test the call method sends a request for each prompt individually."""
         # 1. Setup mock model and its response
         mock_model_instance = mock_generative_model.return_value
+        mock_model_instance.generate_content_async = AsyncMock()
 
         # Mock individual response objects that the API would return
         response1, response2 = MagicMock(), MagicMock()
@@ -29,24 +33,162 @@ class TestGeminiModel(unittest.TestCase):
         response2.text = "response2"
 
         # The mock will return a different response on each call
-        mock_model_instance.generate_content.side_effect = [
+        mock_model_instance.generate_content_async.side_effect = [
             response1,
             response2,
         ]
 
         # 2. Instantiate the model and create a test batch
-        gemini_model = GeminiModel("test-model")
+        no_retry = tenacity.retry(stop=tenacity.stop_after_attempt(1))
+        gemini_model = GeminiModel(
+            "test-model", retry_strategy=no_retry, max_concurrent_requests=2
+        )
         input_batch = pd.Series(["p1", "p2"], index=[10, 20])
 
         # 3. Call the method to be tested
         output_series = gemini_model.call(input_batch)
 
-        self.assertEqual(mock_model_instance.generate_content.call_count, 2)
-        mock_model_instance.generate_content.assert_any_call("p1")
-        mock_model_instance.generate_content.assert_any_call("p2")
+        self.assertEqual(
+            mock_model_instance.generate_content_async.call_count, 2
+        )
+        mock_model_instance.generate_content_async.assert_any_call("p1")
+        mock_model_instance.generate_content_async.assert_any_call("p2")
 
         expected_output = pd.Series(["response1", "response2"], index=[10, 20])
         pd.testing.assert_series_equal(output_series, expected_output)
+
+    @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
+    def test_call_with_retry_on_api_error(self, mock_generative_model):
+        """Test that the model retries on a retryable API error and eventually succeeds."""
+        # 1. Setup mock model to simulate failure then success
+        mock_model_instance = mock_generative_model.return_value
+        successful_response = MagicMock()
+        successful_response.text = "success"
+        mock_model_instance.generate_content_async = AsyncMock(
+            side_effect=[
+                exceptions.ResourceExhausted("Rate limit exceeded"),
+                exceptions.ServiceUnavailable("Server busy"),
+                successful_response,
+            ]
+        )
+
+        # 2. Create a retry strategy for the test
+        retry_strategy = tenacity.retry(
+            retry=tenacity.retry_if_exception_type(
+                (exceptions.ResourceExhausted, exceptions.ServiceUnavailable)
+            ),
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_none(),
+        )
+
+        # 3. Instantiate the model and create a test batch
+        gemini_model = GeminiModel(
+            "test-model",
+            retry_strategy=retry_strategy,
+            max_concurrent_requests=1,
+        )
+        input_batch = pd.Series(["prompt1"], index=[0])
+
+        # 4. Call the method
+        output_series = gemini_model.call(input_batch)
+
+        # 5. Assertions
+        # It should be called 3 times: 2 failures, 1 success
+        self.assertEqual(
+            mock_model_instance.generate_content_async.call_count, 3
+        )
+        mock_model_instance.generate_content_async.assert_called_with("prompt1")
+
+        expected_output = pd.Series(["success"], index=[0])
+        pd.testing.assert_series_equal(output_series, expected_output)
+
+    @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
+    def test_call_fails_after_exhausting_retries(self, mock_generative_model):
+        """Test that the call fails if the API error persists after all retries."""
+        # 1. Setup mock model to always fail
+        mock_model_instance = mock_generative_model.return_value
+        mock_model_instance.generate_content_async = AsyncMock(
+            side_effect=exceptions.ResourceExhausted("Rate limit exceeded")
+        )
+
+        # 2. Create a retry strategy that will be exhausted
+        retry_strategy = tenacity.retry(
+            retry=tenacity.retry_if_exception_type(
+                exceptions.ResourceExhausted
+            ),
+            stop=tenacity.stop_after_attempt(3),
+            wait=tenacity.wait_none(),
+            reraise=True,
+        )
+
+        # 3. Instantiate the model
+        gemini_model = GeminiModel(
+            "test-model",
+            retry_strategy=retry_strategy,
+            max_concurrent_requests=1,
+        )
+        input_batch = pd.Series(["prompt1"])
+
+        # 4. Call the method and assert it raises the final exception
+        with self.assertRaises(exceptions.ResourceExhausted):
+            gemini_model.call(input_batch)
+
+        # 5. Assert it was called 3 times
+        self.assertEqual(
+            mock_model_instance.generate_content_async.call_count, 3
+        )
+
+    @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
+    def test_max_concurrent_requests_is_respected(self, mock_generative_model):
+        """Test that the semaphore correctly limits the number of concurrent API calls."""
+        # 1. Setup
+        max_concurrent_requests = 3
+        total_prompts = 10
+
+        mock_model_instance = mock_generative_model.return_value
+
+        # Helper class to track the number of "in-flight" calls.
+        class ConcurrencyTracker:
+
+            def __init__(self):
+                self.active_calls = 0
+                self.max_concurrent_calls = 0
+                self._lock = asyncio.Lock()
+
+            async def mock_api_call(self, prompt: str):
+                async with self._lock:
+                    self.active_calls += 1
+                    self.max_concurrent_calls = max(
+                        self.max_concurrent_calls, self.active_calls
+                    )
+
+                # Simulate I/O wait. It allows the asyncio event loop to switch to other tasks.
+                await asyncio.sleep(0.01)
+
+                async with self._lock:
+                    self.active_calls -= 1
+
+                response = MagicMock()
+                response.text = f"response for {prompt}"
+                return response
+
+        tracker = ConcurrencyTracker()
+        mock_model_instance.generate_content_async.side_effect = (
+            tracker.mock_api_call
+        )
+
+        # 2. Instantiate the model with a concurrency limit and no retries.
+        no_retry = tenacity.retry(stop=tenacity.stop_after_attempt(1))
+        gemini_model = GeminiModel(
+            "test-model",
+            retry_strategy=no_retry,
+            max_concurrent_requests=max_concurrent_requests,
+        )
+        input_batch = pd.Series([f"prompt_{i}" for i in range(total_prompts)])
+
+        # 3. Call the method and assert the concurrency high-water mark.
+        gemini_model.call(input_batch)
+        self.assertEqual(tracker.max_concurrent_calls, max_concurrent_requests)
 
 
 class TestGenAiModelHandler(unittest.TestCase):
@@ -86,14 +228,21 @@ class TestGenAiModelHandler(unittest.TestCase):
         project = "my-project"
         location = "us-east1"
         model_name = "gemini-1.5-flash"
+        max_requests = 10
 
-        self.handler.project(project).location(location).model(model_name)
+        self.handler.project(project).location(location).model(
+            model_name
+        ).max_concurrent_requests(max_requests)
         loaded_model = self.handler._load_model()
 
         mock_aiplatform.init.assert_called_once_with(
             project=project, location=location
         )
-        mock_gemini_model.assert_called_once_with(model_name)
+        mock_gemini_model.assert_called_once_with(
+            model_name,
+            retry_strategy=self.handler._retry_strategy,
+            max_concurrent_requests=max_requests,
+        )
         self.assertEqual(loaded_model, mock_gemini_model.return_value)
 
     def test_load_model_missing_project_raises_error(self):

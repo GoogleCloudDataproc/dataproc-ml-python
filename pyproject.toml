@@ -11,11 +11,12 @@ requires-python = ">=3.11"
 # Aligned with dependencies in 2.3 DPGCE ML image
 dependencies = [
     "google-cloud-aiplatform~=1.88.0",
+    "google-cloud-storage~=2.19.0",
     "pandas~=2.1.4",
     "pyarrow~=16.1.0",
     "pyspark~=3.5.3",
+    "tenacity~=8.5.0",
     "torch~=2.6.0",
-    "google-cloud-storage~=2.19.0"
 ]
 
 [project.optional-dependencies]

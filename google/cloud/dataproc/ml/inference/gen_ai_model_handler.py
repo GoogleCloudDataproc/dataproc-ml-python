@@ -1,6 +1,10 @@
+import asyncio
 import logging
 from enum import Enum
+from typing import List
 
+from google.api_core import exceptions
+import tenacity
 from pyspark.sql.types import StringType
 from vertexai.generative_models import GenerativeModel
 
@@ -22,26 +26,51 @@ class ModelProvider(Enum):
 class GeminiModel(Model):
     """A concrete implementation of the Model interface for Vertex AI Gemini models."""
 
-    def __init__(self, model_name: str):
+    def __init__(
+        self,
+        model_name: str,
+        retry_strategy: tenacity.BaseRetrying,
+        max_concurrent_requests: int,
+    ):
         """Initializes the GeminiModel.
 
         Args:
             model_name: The name of the Gemini model to use (e.g., "gemini-2.5-flash").
+            retry_strategy: The tenacity retry decorator to use for API calls.
+            max_concurrent_requests: The maximum number of concurrent API requests.
         """
         self._underlying_model = GenerativeModel(model_name)
+        self._semaphore = asyncio.Semaphore(max_concurrent_requests)
+        self._retry_strategy = retry_strategy
+
+    async def _infer_individual_prompt_async(self, prompt: str):
+        # Note: Locking before making retryable calls is important, so we actually wait in this "thread"
+        # instead of making requests for other prompts. This will try to control overwhelming the gemini API.
+        async with self._semaphore:
+            # Wrap the core API call with the retry decorator.
+            retryable_call = self._retry_strategy(
+                self._underlying_model.generate_content_async
+            )
+            return await retryable_call(prompt)
+
+    async def _process_batch_async(self, prompts: List[str]):
+        """Processes a batch of prompts with retries and concurrency control."""
+        tasks = [
+            self._infer_individual_prompt_async(prompt) for prompt in prompts
+        ]
+        return await asyncio.gather(*tasks)
 
     def call(self, batch: pd.Series) -> pd.Series:
         """
         Overrides the base method to send prompts to the Gemini API.
-        If any API call fails or a prompt is blocked, an exception will be raised,
-        allowing Spark to handle the task failure and retry.
+        If any API call fails after retries or a prompt is blocked, an
+        exception will be raised, allowing Spark to handle the task failure and
+        retry the entire task.
         """
-        logger.debug("Sending requests to batch of size ", len(batch))
-        # Let exceptions from the API call or blocked candidates propagate up.
-        responses = [
-            self._underlying_model.generate_content(prompt)
-            for prompt in batch.tolist()
-        ]
+        logger.info(f"Processing batch of size {batch.size}")
+
+        responses = asyncio.run(self._process_batch_async(batch.tolist()))
+
         assert len(responses) == len(batch), (
             f"Mismatch between number of prompts ({len(batch)}) and "
             f"responses ({len(responses)}). This indicates a potential API issue."
@@ -68,6 +97,25 @@ class GenAiModelHandler(BaseModelHandler):
                     .transform(df)
     """
 
+    _RETRYABLE_GOOGLE_API_EXCEPTIONS = (
+        exceptions.ResourceExhausted,  # 429
+        exceptions.ServiceUnavailable,  # 503
+        exceptions.InternalServerError,  # 500
+        exceptions.GatewayTimeout,  # 504
+    )
+
+    _DEFAULT_RETRY_STRATEGIES = {
+        ModelProvider.GOOGLE: tenacity.retry(
+            retry=tenacity.retry_if_exception_type(
+                exception_types=_RETRYABLE_GOOGLE_API_EXCEPTIONS
+            ),
+            wait=tenacity.wait_random_exponential(multiplier=10, min=5, max=60),
+            stop=tenacity.stop_after_attempt(5),
+            before_sleep=tenacity.before_sleep_log(logger, logging.WARNING),
+            reraise=True,  # Re-raising to propagate the underlying exception to the user
+        )
+    }
+
     def __init__(self):
         super().__init__()
         self._project = None
@@ -75,6 +123,10 @@ class GenAiModelHandler(BaseModelHandler):
         self._model = "gemini-2.5-flash"
         self._provider = ModelProvider.GOOGLE
         self._return_type = StringType()
+        self._max_concurrent_requests = 5
+        self._retry_strategy = self._DEFAULT_RETRY_STRATEGIES.get(
+            self._provider
+        )
 
     # TODO: Support other parameters like endpoint
     def model(
@@ -94,6 +146,16 @@ class GenAiModelHandler(BaseModelHandler):
         """
         self._model = model
         self._provider = provider
+
+        # Update the retry strategy to the default for the selected provider.
+        self._retry_strategy = self._DEFAULT_RETRY_STRATEGIES.get(
+            self._provider
+        )
+        if self._retry_strategy is None:
+            logger.warning(
+                f"No default retry strategy found for provider '{provider.name}'. "
+                f"Retries will be disabled unless a strategy is set manually."
+            )
         return self
 
     def project(self, project: str) -> "GenAiModelHandler":
@@ -120,6 +182,36 @@ class GenAiModelHandler(BaseModelHandler):
         self._location = location
         return self
 
+    def max_concurrent_requests(self, n: int) -> "GenAiModelHandler":
+        """Sets the maximum number of concurrent requests to the model API by each Python process.
+
+        Defaults to 5.
+
+        Args:
+            n: The maximum number of concurrent requests.
+
+        Returns:
+            The handler instance for method chaining.
+        """
+        self._max_concurrent_requests = n
+        return self
+
+    def retry_strategy(
+        self, retry_strategy: tenacity.BaseRetrying
+    ) -> "GenAiModelHandler":
+        """Sets a custom tenacity retry strategy for API calls.
+
+        This will override the default strategy for the selected provider.
+
+        Args:
+            retry_strategy: A tenacity retry object (e.g., tenacity.retry(stop=tenacity.stop_after_attempt(3))).
+
+        Returns:
+            The handler instance for method chaining.
+        """
+        self._retry_strategy = retry_strategy
+        return self
+
     def _load_model(self) -> Model:
         """Loads the GeminiModel instance on each Spark executor."""
         if not self._project:
@@ -133,7 +225,11 @@ class GenAiModelHandler(BaseModelHandler):
         if self._provider is ModelProvider.GOOGLE:
             aiplatform.init(project=self._project, location=self._location)
             logger.debug("Creating GenerativeModel client for calls to Gemini")
-            return GeminiModel(self._model)
+            return GeminiModel(
+                self._model,
+                retry_strategy=self._retry_strategy,
+                max_concurrent_requests=self._max_concurrent_requests,
+            )
         else:
             raise NotImplementedError(
                 f"Provider '{self._provider.name}' is not supported."

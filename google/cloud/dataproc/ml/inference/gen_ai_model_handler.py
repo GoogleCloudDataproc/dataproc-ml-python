@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import string
 from enum import Enum
 from typing import List
 
@@ -92,7 +93,7 @@ class GenAiModelHandler(BaseModelHandler):
                     .project("my-gcp-project")
                     .location("us-central1")
                     .model("gemini-2.5-flash") # Default
-                    .input_col("prompts")
+                    .prompt("What is the capital of {city} in single word?")
                     .output_col("predictions") # Default
                     .transform(df)
     """
@@ -180,6 +181,44 @@ class GenAiModelHandler(BaseModelHandler):
             The handler instance for method chaining.
         """
         self._location = location
+        return self
+
+    def prompt(self, prompt_template: str) -> "GenAiModelHandler":
+        """
+        Configures the handler using a string template for the prompt.
+
+        This method parses a string template (e.g., "Summarize this: {text_column}")
+        to automatically identify the input column of the dataframe and create the necessary
+        pre-processor. It requires templates with exactly one placeholder.
+
+        Args:
+            prompt_template: A string with a single named placeholder, like {column_name}.
+
+        Returns:
+            The handler instance for method chaining.
+        """
+        param_names = [
+            field_name
+            for _, field_name, _, _ in string.Formatter().parse(prompt_template)
+            if field_name is not None
+        ]
+
+        if len(param_names) != 1:
+            if param_names:
+                recommendation = "To use multiple columns in the prompt, first combine them into a new derived column using dataframe APIs."
+            else:
+                recommendation = (
+                    "Input to prompt should be dynamic based on each row."
+                )
+            raise ValueError(
+                f"The prompt template must contain exactly one placeholder column,"
+                f" but found {len(param_names)}: {param_names}. {recommendation}"
+            )
+        col_name = param_names[0]
+        self.input_col(col_name)
+        self.pre_processor(
+            lambda col_val: prompt_template.format(**{col_name: col_val})
+        )
         return self
 
     def max_concurrent_requests(self, n: int) -> "GenAiModelHandler":

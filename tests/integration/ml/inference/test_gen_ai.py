@@ -11,25 +11,7 @@ class TestGenAiModelHandler(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.spark = SparkSession.builder.getOrCreate()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.spark.stop()
-
-    def test_gen_ai(self):
-        pre_processor = (
-            lambda city: "Answer in single word. What is the airport code of largest airport in "
-            + city
-        )
-        gen_ai_handler = (
-            GenAiModelHandler()
-            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
-            .location(os.getenv("GOOGLE_CLOUD_REGION"))
-            .input_col("city")
-            .output_col("predicted")
-            .pre_processor(pre_processor)
-        )
-        df = self.spark.createDataFrame(
+        cls.df = cls.spark.createDataFrame(
             [
                 ("Bengaluru", "India"),
                 ("London", "UK"),
@@ -44,8 +26,7 @@ class TestGenAiModelHandler(unittest.TestCase):
             3
         )  # Repartitioning to have multiple rows in same pandas batch
 
-        df = gen_ai_handler.transform(df)
-        expected = self.spark.createDataFrame(
+        cls.expected = cls.spark.createDataFrame(
             [
                 ("Bengaluru", "BLR"),
                 ("London", "LHR"),
@@ -55,9 +36,46 @@ class TestGenAiModelHandler(unittest.TestCase):
                 ("Sydney", "SYD"),
                 ("New York", "JFK"),
             ],
-            ["city", "predicted"],
+            ["city", "predictions"],
         )
-        self._assert_dataframe_equals(expected, df.select("city", "predicted"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.spark.stop()
+
+    def test_pre_processor(self):
+        pre_processor = (
+            lambda city: "What is the airport code of largest airport in "
+            + city
+            + "? Answer in single word."
+        )
+        gen_ai_handler = (
+            GenAiModelHandler()
+            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
+            .location(os.getenv("GOOGLE_CLOUD_REGION"))
+            .input_col("city")
+            .pre_processor(pre_processor)
+        )
+
+        df = gen_ai_handler.transform(self.df)
+        self._assert_dataframe_equals(
+            self.expected, df.select("city", "predictions")
+        )
+
+    def test_prompt_template(self):
+        gen_ai_handler = (
+            GenAiModelHandler()
+            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
+            .location(os.getenv("GOOGLE_CLOUD_REGION"))
+            .prompt(
+                "What is the airport code of largest airport in {city}? Answer in single word."
+            )
+        )
+
+        df = gen_ai_handler.transform(self.df)
+        self._assert_dataframe_equals(
+            self.expected, df.select("city", "predictions")
+        )
 
     def test_unsupported_model_name_raises_exception(self):
         gen_ai_handler = (

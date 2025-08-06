@@ -221,6 +221,38 @@ class TestGenAiModelHandler(unittest.TestCase):
         self.assertEqual(self.handler._location, location)
         self.assertEqual(self.handler._model, model_name)
 
+    def test_prompt_with_single_placeholder_succeeds(self):
+        """Test that prompt() correctly configures the handler with a valid template."""
+        template = "What is the capital of {country}?"
+        self.handler.prompt(template)
+
+        self.assertEqual(self.handler._input_col, "country")
+        self.assertIsNotNone(self.handler._pre_processor)
+
+        # Test the pre-processor function
+        processed_prompt = self.handler._pre_processor("France")
+        self.assertEqual(processed_prompt, "What is the capital of France?")
+
+    def test_prompt_with_no_placeholders_raises_error(self):
+        """Test that prompt() raises ValueError for a template with no placeholders."""
+        template = "This is a static prompt."
+        with self.assertRaisesRegex(
+            ValueError,
+            r"The prompt template must contain exactly one placeholder column, but found 0: \[\]."
+            r" Input to prompt should be dynamic based on each row.",
+        ):
+            self.handler.prompt(template)
+
+    def test_prompt_with_multiple_placeholders_raises_error(self):
+        """Test that prompt() raises ValueError for a template with multiple placeholders."""
+        template = "What is the population of {city} in {country}?"
+        with self.assertRaisesRegex(
+            ValueError,
+            r"The prompt template must contain exactly one placeholder column, but found 2: \['city', 'country'\]."
+            r" To use multiple columns in the prompt, first combine them into a new derived column using dataframe APIs.",
+        ):
+            self.handler.prompt(template)
+
     @patch(f"{GEN_AI_HANDLER_PATH}.aiplatform")
     @patch(f"{GEN_AI_HANDLER_PATH}.GeminiModel")
     def test_load_model_success(self, mock_gemini_model, mock_aiplatform):

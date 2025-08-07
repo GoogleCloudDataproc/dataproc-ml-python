@@ -2,16 +2,15 @@ import asyncio
 import logging
 import string
 from enum import Enum
-from typing import List
-
-from google.api_core import exceptions
-import tenacity
-from pyspark.sql.types import StringType
-from vertexai.generative_models import GenerativeModel
+from typing import List, Optional
 
 import pandas as pd
-from google.cloud import aiplatform
+import tenacity
+from google.api_core import exceptions
+from pyspark.sql.types import StringType
+from vertexai.generative_models import GenerativeModel, GenerationConfig
 
+from google.cloud import aiplatform
 from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
 from google.cloud.dataproc.ml.inference.base_model_handler import Model
 
@@ -32,6 +31,7 @@ class GeminiModel(Model):
         model_name: str,
         retry_strategy: tenacity.BaseRetrying,
         max_concurrent_requests: int,
+        generation_config: GenerationConfig = None,
     ):
         """Initializes the GeminiModel.
 
@@ -39,10 +39,12 @@ class GeminiModel(Model):
             model_name: The name of the Gemini model to use (e.g., "gemini-2.5-flash").
             retry_strategy: The tenacity retry decorator to use for API calls.
             max_concurrent_requests: The maximum number of concurrent API requests.
+            generation_config: The generation configuration for the model.
         """
         self._underlying_model = GenerativeModel(model_name)
         self._semaphore = asyncio.Semaphore(max_concurrent_requests)
         self._retry_strategy = retry_strategy
+        self._generation_config = generation_config
 
     async def _infer_individual_prompt_async(self, prompt: str):
         # Note: Locking before making retryable calls is important, so we actually wait in this "thread"
@@ -52,7 +54,9 @@ class GeminiModel(Model):
             retryable_call = self._retry_strategy(
                 self._underlying_model.generate_content_async
             )
-            return await retryable_call(prompt)
+            return await retryable_call(
+                prompt, generation_config=self._generation_config
+            )
 
     async def _process_batch_async(self, prompts: List[str]):
         """Processes a batch of prompts with retries and concurrency control."""
@@ -95,6 +99,7 @@ class GenAiModelHandler(BaseModelHandler):
                     .model("gemini-2.5-flash") # Default
                     .prompt("What is the capital of {city} in single word?")
                     .output_col("predictions") # Default
+                    .generation_config(GenerationConfig(temperature=25)) # Optional
                     .transform(df)
     """
 
@@ -128,6 +133,7 @@ class GenAiModelHandler(BaseModelHandler):
         self._retry_strategy = self._DEFAULT_RETRY_STRATEGIES.get(
             self._provider
         )
+        self._generation_config: Optional[GenerationConfig] = None
 
     # TODO: Support other parameters like endpoint
     def model(
@@ -221,6 +227,20 @@ class GenAiModelHandler(BaseModelHandler):
         )
         return self
 
+    def generation_config(
+        self, generation_config: GenerationConfig
+    ) -> "GenAiModelHandler":
+        """Sets the generation config for the model.
+
+        Args:
+            generation_config: The vertexai.generative_models.GenerationConfig` object for the model.
+
+        Returns:
+            The handler instance for method chaining.
+        """
+        self._generation_config = generation_config
+        return self
+
     def max_concurrent_requests(self, n: int) -> "GenAiModelHandler":
         """Sets the maximum number of concurrent requests to the model API by each Python process.
 
@@ -268,6 +288,7 @@ class GenAiModelHandler(BaseModelHandler):
                 self._model,
                 retry_strategy=self._retry_strategy,
                 max_concurrent_requests=self._max_concurrent_requests,
+                generation_config=self._generation_config,
             )
         else:
             raise NotImplementedError(

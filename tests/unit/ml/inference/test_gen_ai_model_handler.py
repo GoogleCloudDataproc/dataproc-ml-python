@@ -12,6 +12,7 @@ from google.cloud.dataproc.ml.inference.gen_ai_model_handler import (
     GeminiModel,
     ModelProvider,
 )
+from vertexai.generative_models import GenerationConfig
 
 # The path for patching must be where the object is *looked up*, not where it's defined.
 GEN_AI_HANDLER_PATH = "google.cloud.dataproc.ml.inference.gen_ai_model_handler"
@@ -51,8 +52,12 @@ class TestGeminiModel(unittest.TestCase):
         self.assertEqual(
             mock_model_instance.generate_content_async.call_count, 2
         )
-        mock_model_instance.generate_content_async.assert_any_call("p1")
-        mock_model_instance.generate_content_async.assert_any_call("p2")
+        mock_model_instance.generate_content_async.assert_any_call(
+            "p1", generation_config=None
+        )
+        mock_model_instance.generate_content_async.assert_any_call(
+            "p2", generation_config=None
+        )
 
         expected_output = pd.Series(["response1", "response2"], index=[10, 20])
         pd.testing.assert_series_equal(output_series, expected_output)
@@ -97,10 +102,41 @@ class TestGeminiModel(unittest.TestCase):
         self.assertEqual(
             mock_model_instance.generate_content_async.call_count, 3
         )
-        mock_model_instance.generate_content_async.assert_called_with("prompt1")
+        mock_model_instance.generate_content_async.assert_called_with(
+            "prompt1", generation_config=None
+        )
 
         expected_output = pd.Series(["success"], index=[0])
         pd.testing.assert_series_equal(output_series, expected_output)
+
+    @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
+    def test_call_with_generation_config(self, mock_generative_model):
+        """Test that the call method passes generation_config to the API."""
+        # 1. Setup mock model and its response
+        mock_model_instance = mock_generative_model.return_value
+        mock_model_instance.generate_content_async = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.text = "response"
+        mock_model_instance.generate_content_async.return_value = mock_response
+
+        # 2. Instantiate the model with a generation_config
+        no_retry = tenacity.retry(stop=tenacity.stop_after_attempt(1))
+        mock_gen_config = GenerationConfig(temperature=0.5)
+        gemini_model = GeminiModel(
+            "test-model",
+            retry_strategy=no_retry,
+            max_concurrent_requests=1,
+            generation_config=mock_gen_config,
+        )
+        input_batch = pd.Series(["prompt1"], index=[0])
+
+        # 3. Call the method to be tested
+        gemini_model.call(input_batch)
+
+        # 4. Assert that generate_content_async was called with the config
+        mock_model_instance.generate_content_async.assert_called_once_with(
+            "prompt1", generation_config=mock_gen_config
+        )
 
     @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
     def test_call_fails_after_exhausting_retries(self, mock_generative_model):
@@ -155,7 +191,9 @@ class TestGeminiModel(unittest.TestCase):
                 self.max_concurrent_calls = 0
                 self._lock = asyncio.Lock()
 
-            async def mock_api_call(self, prompt: str):
+            async def mock_api_call(
+                self, prompt: str, generation_config: GenerationConfig
+            ):
                 async with self._lock:
                     self.active_calls += 1
                     self.max_concurrent_calls = max(
@@ -255,6 +293,36 @@ class TestGenAiModelHandler(unittest.TestCase):
 
     @patch(f"{GEN_AI_HANDLER_PATH}.aiplatform")
     @patch(f"{GEN_AI_HANDLER_PATH}.GeminiModel")
+    def test_generation_config_is_passed_to_model(
+        self, mock_gemini_model, mock_aiplatform
+    ):
+        """Test that generation_config() sets the config and is passed to the model."""
+        project = "my-project"
+        location = "us-east1"
+        mock_gen_config = MagicMock(spec=GenerationConfig)
+
+        # Set the config via the builder method
+        chained_handler = self.handler.generation_config(mock_gen_config)
+        self.assertIs(chained_handler, self.handler)
+        self.assertIs(self.handler._generation_config, mock_gen_config)
+
+        # Load the model and check if the config is passed
+        self.handler.project(project).location(location)
+        loaded_model = self.handler._load_model()
+
+        mock_aiplatform.init.assert_called_once_with(
+            project=project, location=location
+        )
+        mock_gemini_model.assert_called_once_with(
+            self.handler._model,
+            retry_strategy=self.handler._retry_strategy,
+            max_concurrent_requests=self.handler._max_concurrent_requests,
+            generation_config=mock_gen_config,
+        )
+        self.assertEqual(loaded_model, mock_gemini_model.return_value)
+
+    @patch(f"{GEN_AI_HANDLER_PATH}.aiplatform")
+    @patch(f"{GEN_AI_HANDLER_PATH}.GeminiModel")
     def test_load_model_success(self, mock_gemini_model, mock_aiplatform):
         """Test the successful loading of a model."""
         project = "my-project"
@@ -274,6 +342,7 @@ class TestGenAiModelHandler(unittest.TestCase):
             model_name,
             retry_strategy=self.handler._retry_strategy,
             max_concurrent_requests=max_requests,
+            generation_config=None,
         )
         self.assertEqual(loaded_model, mock_gemini_model.return_value)
 

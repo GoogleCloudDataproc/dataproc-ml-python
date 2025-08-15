@@ -31,3 +31,6 @@ dev = [
 
 [tool.pyink]
 line-length = 80 # Default is 88
+
+[tool.pytest.ini_options]
+addopts = "--ignore=load/"

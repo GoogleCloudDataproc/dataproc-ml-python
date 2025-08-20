@@ -25,7 +25,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import ArrayType, FloatType
 from torchvision.models import resnet18
 
-from google.cloud import storage
+from google.cloud import storage, exceptions as gcloud_exceptions
 from google.cloud.dataproc.ml.inference import PyTorchModelHandler
 from tests.utils.gcs_util import download_image_from_gcs
 from tests.utils.pytorch_util import (
@@ -43,9 +43,6 @@ class TestPyTorchModelHandler(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """
-        Set up resources shared across ALL tests (Spark, model, expected answer).
-        """
         cls.spark = SparkSession.builder.getOrCreate()
         cls.sample_real_image_bytes = download_image_from_gcs(
             cls.SAMPLE_PUBLIC_IMAGE_GCS_PATH
@@ -93,7 +90,10 @@ class TestPyTorchModelHandler(unittest.TestCase):
         full_model_bytes = save_pytorch_model_full_object(
             self.actual_model_resnet18
         )
-        self.gcs_full_model_path = f"gs://{self.TEST_GCS_BUCKET}/{self.test_gcs_prefix}/full_resnet18.pt"
+        self.gcs_full_model_path = (
+            f"gs://{self.TEST_GCS_BUCKET}/"
+            f"{self.test_gcs_prefix}/full_resnet18.pt"
+        )
         self.gcs_bucket.blob(
             f"{self.test_gcs_prefix}/full_resnet18.pt"
         ).upload_from_string(full_model_bytes)
@@ -101,7 +101,10 @@ class TestPyTorchModelHandler(unittest.TestCase):
         state_dict_bytes = save_pytorch_model_state_dict(
             self.actual_model_resnet18
         )
-        self.gcs_statedict_path = f"gs://{self.TEST_GCS_BUCKET}/{self.test_gcs_prefix}/resnet18_state_dict.pt"
+        self.gcs_statedict_path = (
+            f"gs://{self.TEST_GCS_BUCKET}/"
+            f"{self.test_gcs_prefix}/resnet18_state_dict.pt"
+        )
         self.gcs_bucket.blob(
             f"{self.test_gcs_prefix}/resnet18_state_dict.pt"
         ).upload_from_string(state_dict_bytes)
@@ -111,12 +114,12 @@ class TestPyTorchModelHandler(unittest.TestCase):
         Runs AFTER EACH test. Deletes the GCS artifacts created for
         the test that just finished to ensure a clean slate for the next one.
         """
-        try:
-            blobs = self.gcs_bucket.list_blobs(prefix=self.test_gcs_prefix)
-            for blob in blobs:
+        blobs = self.gcs_bucket.list_blobs(prefix=self.test_gcs_prefix)
+        for blob in blobs:
+            try:
                 blob.delete()
-        except Exception as e:
-            logging.warning(f"Failed to clean up GCS artifacts: {e}")
+            except gcloud_exceptions.GoogleCloudError as e:
+                logging.warning("Failed to clean up GCS artifacts: %s", e)
 
     def test_pytorch_full_model_object_inference(self):
 
@@ -168,7 +171,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         pytorch_handler = (
             self.pytorch_handler.model_path(self.gcs_statedict_path)
             .device("cpu")
-            # Use weights=None to initialize an empty model structure, since the weights will be loaded from your file.
+            # Use weights=None to initialize an empty model structure.
             .set_model_architecture(resnet18, weights=None)
             .input_col("image_bytes")
             .output_col("predictions_statedict")
@@ -189,7 +192,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
             "predictions_statedict"
         ).collect()
 
-        # Since it's the same model architecture, the prediction logic is identical
+        # It's the same model architecture, the prediction logic is identical
         first_prediction_list = all_actual_predictions_raw[0][0]
         predicted_class_idx = np.array(first_prediction_list).argmax()
         actual_label = self.imagenet_categories[predicted_class_idx]
@@ -200,7 +203,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         )
 
     def test_state_dict_no_model_architecture(self):
-        """Tests that loading a state_dict fails if model_architecture is not provided."""
+        """Tests loading a state_dict fails without model_architecture."""
         state_dict_path = self.gcs_statedict_path
 
         handler = (
@@ -216,13 +219,14 @@ class TestPyTorchModelHandler(unittest.TestCase):
 
         with self.assertRaisesRegex(
             PythonException,
-            "TypeError: The file at .* was loaded successfully, but it is not a torch.nn.Module instance.*",
+            "TypeError: The file at .* was loaded successfully, but it is "
+            "not a torch.nn.Module instance.*",
         ):
             handler.transform(df).collect()
 
     def test_invalid_model_path_missing_components(self):
-        """Tests that an error is raised for incomplete GCS paths during model loading."""
-        # Scenario 1: Path with only "gs://" - will be caught by _load_model_from_gcs
+        """Tests error for incomplete GCS paths during model loading."""
+        # Scenario 1: Path with only "gs://"
         path_only_scheme = "gs://"
         pytorch_handler = (
             self.pytorch_handler.model_path(path_only_scheme)
@@ -242,7 +246,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         ):
             pytorch_handler.transform(df).collect()
 
-        # Scenario 2: Path with bucket but no object - also caught by _load_model_from_gcs
+        # Scenario 2: Path with bucket but no object
         path_no_object = f"gs://{self.TEST_GCS_BUCKET}/"
         handler_no_object = (
             self.pytorch_handler.model_path(path_no_object)
@@ -259,7 +263,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
             handler_no_object.transform(df).collect()
 
     def test_non_existent_gcs_model(self):
-        """Tests that an error is raised when the GCS model path does not exist."""
+        """Tests error is raised when the GCS model path does not exist."""
         non_existent_path = f"gs://{self.TEST_GCS_BUCKET}/non_existent_model.pt"
         pytorch_handler = (
             self.pytorch_handler.model_path(non_existent_path)
@@ -297,7 +301,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
             pytorch_handler.transform(df).collect()
 
     def test_full_model_load_from_non_model_file(self):
-        """Tests that loading a full model object fails if the GCS path points to a non-model file."""
+        """Tests that loading a full model fails for a non-model file."""
         non_model_path = self.SAMPLE_PUBLIC_IMAGE_GCS_PATH
 
         pytorch_handler = (
@@ -314,7 +318,8 @@ class TestPyTorchModelHandler(unittest.TestCase):
 
         with self.assertRaisesRegex(
             PythonException,
-            r"RuntimeError: Failed to load .* The file may be corrupted .* Original error: invalid load key, '\\xff'.",
+            r"RuntimeError: Failed to load .* The file may be corrupted .*"
+            r"invalid load key, '\\xff'.*",
         ):
             pytorch_handler.transform(df).collect()
 

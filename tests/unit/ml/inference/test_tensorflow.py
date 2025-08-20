@@ -19,13 +19,15 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 from google.api_core import exceptions as gcp_exceptions
+from google.cloud.dataproc.ml.inference.tensorflow_model_handler import (
+    TensorFlowModel,
+    TensorFlowModelHandler,
+)
 
 # Assume the handler code is in a file accessible by this path
 TENSORFLOW_HANDLER_PATH = (
     "google.cloud.dataproc.ml.inference.tensorflow_model_handler"
 )
-
-from google.cloud.dataproc.ml.inference.tensorflow_model_handler import TensorFlowModel, TensorFlowModelHandler
 
 
 class TestTensorFlowModelUnit(unittest.TestCase):
@@ -33,17 +35,16 @@ class TestTensorFlowModelUnit(unittest.TestCase):
 
     @patch(f"{TENSORFLOW_HANDLER_PATH}.tf.saved_model.load")
     def test_load_non_existent_path_raises_runtime_error(self, mock_tf_load):
-        """
-        Tests that a GCS error during loading is caught and re-raised as a RuntimeError.
-        """
+        """Tests GCS error during loading is re-raised as RuntimeError."""
 
-        # Simulate an error from TensorFlow's GCS integration (e.g., path not found).
+        # Simulate an error from TensorFlow's GCS integration
+        # (e.g., path not found).
         mock_tf_load.side_effect = gcp_exceptions.NotFound("GCS path not found")
 
         expected_regex = (
-            "A Google Cloud Storage error occurred while loading the model from .*. "
-            "Please check the GCS path and that the executor has read permissions. "
-            "Original error: .*"
+            "A Google Cloud Storage error occurred while loading the model "
+            "from .*. Please check the GCS path and that the executor has "
+            "read permissions."
         )
 
         with self.assertRaisesRegex(RuntimeError, expected_regex):
@@ -51,9 +52,7 @@ class TestTensorFlowModelUnit(unittest.TestCase):
 
     @patch(f"{TENSORFLOW_HANDLER_PATH}.tf.saved_model.load")
     def test_load_corrupted_model_raises_runtime_error(self, mock_tf_load):
-        """
-        Tests that a TensorFlow error from a corrupted file is re-raised as a RuntimeError.
-        """
+        """Tests TF error from a corrupted file is re-raised as RuntimeError."""
 
         # Simulate a TensorFlow error (e.g., corrupted file).
         mock_tf_load.side_effect = tf.errors.OpError(
@@ -61,18 +60,15 @@ class TestTensorFlowModelUnit(unittest.TestCase):
         )
 
         expected_regex = (
-            "Failed to load the TensorFlow model from .*. "
-            "Ensure the artifact is a valid and uncorrupted SavedModel or TF Checkpoint. "
-            "Original error: .*"
+            "Failed to load the TensorFlow model from .*. Ensure the "
+            "artifact is a valid and uncorrupted SavedModel or TF Checkpoint."
         )
 
         with self.assertRaisesRegex(RuntimeError, expected_regex):
             TensorFlowModel(model_path="gs://fake-bucket/corrupted-model/")
 
     def test_call_with_multiple_outputs_raises_error(self):
-        """
-        Tests that the handler fails if the model returns a dictionary with multiple outputs.
-        """
+        """Tests handler fails if model returns a dict with multiple outputs."""
         # 1. Create a mock model that returns a dict with two items.
         mock_prediction_dict = {
             "output_1": tf.constant([1.0]),
@@ -98,15 +94,16 @@ class TestTensorFlowModelUnit(unittest.TestCase):
             # 3. Assert that a ValueError is raised with a clear message.
             with self.assertRaisesRegex(
                 ValueError,
-                "Model returned multiple outputs: \\['output_1', 'output_2'\\].*expects a model with a single output",
+                (
+                    "Model returned multiple outputs: \\['output_1', "
+                    "'output_2'\\].*expects a model with a single output"
+                ),
             ):
                 # A Series where each element is a NumPy array.
                 model.call(pd.Series([np.array([1.0, 2.0])]))
 
     def test_call_with_single_output_dict_succeeds(self):
-        """
-        Tests that the handler correctly processes a model that returns a single-item dictionary.
-        """
+        """Tests handler processes a model returning a single-item dict."""
         # 1. Mock a model returning a single-item dict.
         expected_output = np.array([[0.5], [0.8]])
         mock_prediction_dict = {"my_only_output": tf.constant(expected_output)}
@@ -134,7 +131,8 @@ class TestTensorFlowModelUnit(unittest.TestCase):
 
             # 3. Assert the result is the unpacked value from the dictionary.
             self.assertIsInstance(result, pd.Series)
-            # Compare list representations to avoid issues with NumPy array comparison.
+            # Compare list representations to avoid issues with NumPy array
+            # comparison.
             self.assertEqual(result.tolist(), expected_output.tolist())
             self.assertTrue(result.index.equals(input_series.index))
 
@@ -149,7 +147,7 @@ class TestTensorFlowModelUnit(unittest.TestCase):
                 model.call(pd.Series(["a", "b", "c"]))
 
     def test_call_with_shape_mismatch(self):
-        # Mock a Keras model this time to test the other branch of the call method.
+        # Mock a Keras model to test the other branch of the call method.
         mock_underlying_model = MagicMock(spec=tf.keras.Model)
         mock_underlying_model.side_effect = tf.errors.InvalidArgumentError(
             None, None, "Shape mismatch"
@@ -162,7 +160,10 @@ class TestTensorFlowModelUnit(unittest.TestCase):
             model = TensorFlowModel(model_path="gs://fake-bucket/fake-model")
             with self.assertRaisesRegex(
                 ValueError,
-                "The input data's shape or dtype does not match the model's expected input",
+                (
+                    "The input data's shape or dtype does not match the "
+                    "model's expected input"
+                ),
             ):
                 model.call(pd.Series([1.0, 2.0]))
 

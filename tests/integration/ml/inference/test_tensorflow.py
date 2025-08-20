@@ -17,18 +17,19 @@ import os
 import shutil
 import unittest
 import uuid
-import stat
 
 import numpy as np
 import tensorflow as tf
-from google.cloud import storage
 from pyspark.errors.exceptions.captured import PythonException
 from pyspark.sql import SparkSession
 from pyspark.sql.types import ArrayType, FloatType
 
+from google.cloud import storage, exceptions as gcloud_exceptions
 from google.cloud.dataproc.ml.inference import TensorFlowModelHandler
-from tests.utils.gcs_util import download_image_from_gcs, upload_directory_to_gcs
-
+from tests.utils.gcs_util import (
+    download_image_from_gcs,
+    upload_directory_to_gcs,
+)
 from tests.utils.tensorflow_util import (
     preprocess_for_mobilenetv2,
     save_model_as_savedmodel,
@@ -46,7 +47,8 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Set up resources shared across all tests (Spark, model, expected answer)."""
+        """Set up resources shared across all tests
+        (Spark, model, expected answer)."""
 
         cls.gcs_client = storage.Client(project=cls.GOOGLE_CLOUD_PROJECT)
 
@@ -58,12 +60,11 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
             weights="imagenet"
         )
 
-        with open(
-            tf.keras.utils.get_file(
-                "ImageNetLabels.txt",
-                "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt",
-            )
-        ) as f:
+        imagenet_labels_path = tf.keras.utils.get_file(
+            "ImageNetLabels.txt",
+            "https://storage.googleapis.com/download.tensorflow.org/data/ImageNetLabels.txt",  # pylint: disable=line-too-long
+        )
+        with open(imagenet_labels_path, "r", encoding="utf-8") as f:
             cls.imagenet_categories = f.read().splitlines()
 
         input_tensor = preprocess_for_mobilenetv2(cls.sample_image_bytes)
@@ -90,7 +91,7 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
         self.gcs_bucket = self.gcs_client.bucket(self.TEST_GCS_BUCKET)
         self.test_gcs_prefix = f"dataproc-ml-tf-test/{uuid.uuid4()}"
 
-        # Use addCleanup to guarantee that resources are deleted even if setUp fails.
+        # To guarantee that resources are deleted even if setUp fails.
         self.addCleanup(self._cleanup_gcs_artifacts)
 
     def _cleanup_gcs_artifacts(self):
@@ -99,8 +100,8 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
             blobs = self.gcs_bucket.list_blobs(prefix=self.test_gcs_prefix)
             for blob in blobs:
                 blob.delete()
-        except Exception as e:
-            logging.warning(f"Failed to clean up GCS artifacts: {e}")
+        except gcloud_exceptions.GoogleCloudError as e:
+            logging.warning("Failed to clean up GCS artifacts: %s", e)
 
     def test_e2e_full_model_load_savedmodel(self):
         """Tests inference with a full SavedModel."""
@@ -201,7 +202,7 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
             handler.transform(df).collect()
 
     def test_weights_load_without_architecture_fails(self):
-        """Tests that loading a checkpoint fails if set_model_architecture is not called."""
+        """Tests loading a checkpoint fails without a model architecture."""
 
         local_weights_filepath = save_model_as_checkpoint(
             self.actual_model_mobilenet

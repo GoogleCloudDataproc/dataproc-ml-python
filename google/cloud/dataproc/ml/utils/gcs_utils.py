@@ -12,14 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""A module for Google Cloud Storage (GCS) utility functions."""
+
 import urllib.parse
-import os
-from google.cloud import storage
-from google.cloud.storage import Bucket
 
 
-def validate_and_parse_gcs_path(model_path):
-    """Validates the GCS path format and extracts bucket and blob names."""
+def _validate_and_parse_gcs_path(model_path):
+    """Validates the GCS path format and extracts bucket and blob names.
+
+    Args:
+        model_path: The GCS path string (e.g., "gs://bucket/object").
+
+    Returns:
+        A tuple containing the bucket name and the blob name.
+
+    Raises:
+        ValueError: If the path format is invalid (e.g., wrong scheme, missing
+            bucket or object name).
+    """
     parsed_path = urllib.parse.urlparse(model_path)
     if parsed_path.scheme != "gs":
         raise ValueError(

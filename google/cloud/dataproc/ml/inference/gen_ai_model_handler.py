@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""A module for handling Generative AI model inference on Spark DataFrames."""
+
 import asyncio
 import logging
 import string
@@ -21,12 +23,13 @@ from typing import List, Optional
 import pandas as pd
 import tenacity
 from google.api_core import exceptions
+from google.cloud import aiplatform
+from google.cloud.dataproc.ml.inference.base_model_handler import (
+    BaseModelHandler,
+    Model,
+)
 from pyspark.sql.types import StringType
 from vertexai.generative_models import GenerativeModel, GenerationConfig
-
-from google.cloud import aiplatform
-from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
-from google.cloud.dataproc.ml.inference.base_model_handler import Model
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +41,8 @@ class ModelProvider(Enum):
 
 
 class GeminiModel(Model):
-    """A concrete implementation of the Model interface for Vertex AI Gemini models."""
+    """A concrete implementation of the Model interface for Vertex AI
+    Gemini models."""
 
     def __init__(
         self,
@@ -50,9 +54,11 @@ class GeminiModel(Model):
         """Initializes the GeminiModel.
 
         Args:
-            model_name: The name of the Gemini model to use (e.g., "gemini-2.5-flash").
+            model_name: The name of the Gemini model to use (e.g.,
+                "gemini-2.5-flash").
             retry_strategy: The tenacity retry decorator to use for API calls.
-            max_concurrent_requests: The maximum number of concurrent API requests.
+            max_concurrent_requests: The maximum number of concurrent API
+                requests.
             generation_config: The generation configuration for the model.
         """
         self._underlying_model = GenerativeModel(model_name)
@@ -61,8 +67,9 @@ class GeminiModel(Model):
         self._generation_config = generation_config
 
     async def _infer_individual_prompt_async(self, prompt: str):
-        # Note: Locking before making retryable calls is important, so we actually wait in this "thread"
-        # instead of making requests for other prompts. This will try to control overwhelming the gemini API.
+        # Note: Locking before making retryable calls is important,
+        # so we actually wait in this "thread" instead of making requests for
+        # other prompts. This will try to control overwhelming the gemini API.
         async with self._semaphore:
             # Wrap the core API call with the retry decorator.
             retryable_call = self._retry_strategy(
@@ -86,13 +93,13 @@ class GeminiModel(Model):
         exception will be raised, allowing Spark to handle the task failure and
         retry the entire task.
         """
-        logger.info(f"Processing batch of size {batch.size}")
+        logger.info("Processing batch of size %s", batch.size)
 
         responses = asyncio.run(self._process_batch_async(batch.tolist()))
 
         assert len(responses) == len(batch), (
-            f"Mismatch between number of prompts ({len(batch)}) and "
-            f"responses ({len(responses)}). This indicates a potential API issue."
+            f"Mismatch between number of prompts ({len(batch)}) and responses "
+            f"({len(responses)}). This indicates a potential API issue."
         )
         return pd.Series(
             [response.text for response in responses], index=batch.index
@@ -103,18 +110,32 @@ class GenAiModelHandler(BaseModelHandler):
     """A handler for running inference with Gemini models on Spark DataFrames.
 
     This class extends `BaseModelHandler` to provide a convenient way to apply
-    Google's Gemini generative models to data in a distributed manner using Spark.
-    It uses a builder pattern for configuration.
+    Google's Gemini generative models to data in a distributed manner using
+    Spark. It uses a builder pattern for configuration.
 
-    Example usage:
-        result_df = GenAiModelHandler()
-                    .project("my-gcp-project")
-                    .location("us-central1")
-                    .model("gemini-2.5-flash") # Default
-                    .prompt("What is the capital of {city} in single word?")
-                    .output_col("predictions") # Default
-                    .generation_config(GenerationConfig(temperature=25)) # Optional
-                    .transform(df)
+    Required Configuration:
+        - `.project(str)`: Your Google Cloud project ID.
+        - `.location(str)`: The GCP region for the Vertex AI API call.
+        - `.prompt(str)`: A prompt template with a single placeholder for an
+          input column (e.g., "Summarize: {text_col}").
+
+    Optional Configuration:
+        - `.model(str)`: The model to use (defaults to "gemini-2.5-flash").
+        - `.output_col(str)`: The name of the prediction output column
+          (defaults to "predictions").
+        - Other methods like `generation_config`,`max_concurrent_requests`, etc.
+
+    Example:
+        >>> result_df = (
+        ...     GenAiModelHandler()
+        ...     .project("my-gcp-project")
+        ...     .location("us-central1")
+        ...     .model("gemini-2.5-flash")
+        ...     .prompt("What is the capital of {city} in single word?")
+        ...     .output_col("predictions")
+        ...     .generation_config(GenerationConfig(temperature=0.2))
+        ...     .transform(df)
+        ... )
     """
 
     _RETRYABLE_GOOGLE_API_EXCEPTIONS = (
@@ -132,7 +153,8 @@ class GenAiModelHandler(BaseModelHandler):
             wait=tenacity.wait_random_exponential(multiplier=10, min=5, max=60),
             stop=tenacity.stop_after_attempt(5),
             before_sleep=tenacity.before_sleep_log(logger, logging.WARNING),
-            reraise=True,  # Re-raising to propagate the underlying exception to the user
+            # Re-raising to propagate the underlying exception to the user
+            reraise=True,
         )
     }
 
@@ -149,7 +171,6 @@ class GenAiModelHandler(BaseModelHandler):
         )
         self._generation_config: Optional[GenerationConfig] = None
 
-    # TODO: Support other parameters like endpoint
     def model(
         self,
         model: str = "gemini-2.5-flash",
@@ -158,9 +179,9 @@ class GenAiModelHandler(BaseModelHandler):
         """Sets the Gemini model to be used for inference.
 
         Args:
-            model: The name of the model (e.g., "gemini-1.5-flash").
-            provider: Provider of the model. Currently only `ModelProvider.GOOGLE`
-                is supported.
+            model: The name of the model. Defaults to "gemini-2.5-flash".
+            provider: Provider of the model.
+            Currently only `ModelProvider.GOOGLE` is supported.
 
         Returns:
             The handler instance for method chaining.
@@ -174,8 +195,9 @@ class GenAiModelHandler(BaseModelHandler):
         )
         if self._retry_strategy is None:
             logger.warning(
-                f"No default retry strategy found for provider '{provider.name}'. "
-                f"Retries will be disabled unless a strategy is set manually."
+                "No default retry strategy found for provider '%s'. "
+                "Retries will be disabled unless a strategy is set manually.",
+                provider.name,
             )
         return self
 
@@ -204,18 +226,23 @@ class GenAiModelHandler(BaseModelHandler):
         return self
 
     def prompt(self, prompt_template: str) -> "GenAiModelHandler":
-        """
-        Configures the handler using a string template for the prompt.
+        """Configures the handler using a string template for the prompt.
 
-        This method parses a string template (e.g., "Summarize this: {text_column}")
-        to automatically identify the input column of the dataframe and create the necessary
-        pre-processor. It requires templates with exactly one placeholder.
+        This method parses a string template (e.g., "Summarize this:
+        {text_column}") to automatically identify the input column of the
+        dataframe and create the necessary pre-processor. It requires templates
+        with exactly one placeholder.
 
         Args:
-            prompt_template: A string with a single named placeholder, like {column_name}.
+            prompt_template: A string with a single named placeholder, like
+                {column_name}.
 
         Returns:
             The handler instance for method chaining.
+
+        Raises:
+            ValueError: If the prompt template does not contain exactly one
+                placeholder.
         """
         param_names = [
             field_name
@@ -225,14 +252,18 @@ class GenAiModelHandler(BaseModelHandler):
 
         if len(param_names) != 1:
             if param_names:
-                recommendation = "To use multiple columns in the prompt, first combine them into a new derived column using dataframe APIs."
+                recommendation = (
+                    "To use multiple columns in the prompt, first combine them "
+                    "into a new derived column using dataframe APIs."
+                )
             else:
                 recommendation = (
                     "Input to prompt should be dynamic based on each row."
                 )
             raise ValueError(
-                f"The prompt template must contain exactly one placeholder column,"
-                f" but found {len(param_names)}: {param_names}. {recommendation}"
+                "The prompt template must contain exactly one placeholder "
+                f"column, but found {len(param_names)}: {param_names}. "
+                f"{recommendation}"
             )
         col_name = param_names[0]
         self.input_col(col_name)
@@ -247,7 +278,8 @@ class GenAiModelHandler(BaseModelHandler):
         """Sets the generation config for the model.
 
         Args:
-            generation_config: The vertexai.generative_models.GenerationConfig` object for the model.
+            generation_config: The `vertexai.generative_models.GenerationConfig`
+                object for the model.
 
         Returns:
             The handler instance for method chaining.
@@ -256,7 +288,8 @@ class GenAiModelHandler(BaseModelHandler):
         return self
 
     def max_concurrent_requests(self, n: int) -> "GenAiModelHandler":
-        """Sets the maximum number of concurrent requests to the model API by each Python process.
+        """Sets the maximum number of concurrent requests to the model API by
+        each Python process.
 
         Defaults to 5.
 
@@ -277,7 +310,8 @@ class GenAiModelHandler(BaseModelHandler):
         This will override the default strategy for the selected provider.
 
         Args:
-            retry_strategy: A tenacity retry object (e.g., tenacity.retry(stop=tenacity.stop_after_attempt(3))).
+            retry_strategy: A tenacity retry object (e.g.,
+                tenacity.retry(stop=tenacity.stop_after_attempt(3))).
 
         Returns:
             The handler instance for method chaining.
@@ -299,7 +333,7 @@ class GenAiModelHandler(BaseModelHandler):
             aiplatform.init(project=self._project, location=self._location)
             logger.debug("Creating GenerativeModel client for calls to Gemini")
             return GeminiModel(
-                self._model,
+                model_name=self._model,
                 retry_strategy=self._retry_strategy,
                 max_concurrent_requests=self._max_concurrent_requests,
                 generation_config=self._generation_config,

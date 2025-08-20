@@ -32,8 +32,9 @@ def save_pytorch_model_state_dict(model: torch.nn.Module) -> bytes:
 def save_pytorch_model_full_object(model: torch.nn.Module) -> bytes:
     """Saves a full PyTorch model object to bytes."""
     buffer = io.BytesIO()
-    # Security note: This saves the entire model object using pickle.
-    # It's less portable and has security implications if loading from untrusted sources.
+    # Security note: This saves the entire model object using pickle. It's
+    # less portable and has security implications if loading from untrusted
+    # sources.
     torch.save(model, buffer)
     buffer.seek(0)
     return buffer.getvalue()
@@ -49,7 +50,7 @@ def preprocess_real_image_data(image_bytes: bytes) -> torch.Tensor:
         raise TypeError(f"Expected image bytes, got {type(image_bytes)}")
 
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    _resnet_transform = transforms.Compose(
+    resnet_transform = transforms.Compose(
         [
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -59,5 +60,5 @@ def preprocess_real_image_data(image_bytes: bytes) -> torch.Tensor:
             ),
         ]
     )
-    input_tensor = _resnet_transform(image)
+    input_tensor = resnet_transform(image)
     return input_tensor

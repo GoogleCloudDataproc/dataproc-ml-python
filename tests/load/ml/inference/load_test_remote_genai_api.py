@@ -28,7 +28,7 @@ NUM_PROMPTS = 100
 ROWS_PER_PARTITION = 50
 
 
-class LoadTestGenAI(unittest.TestCase):
+class GenAITestSuite(unittest.TestCase):
     """
     A load test suite for the GenAiModelHandler.
 

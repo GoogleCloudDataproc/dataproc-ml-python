@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""A subpackage for model inference handlers."""
+
 from .gen_ai_model_handler import GenAiModelHandler
 from .pytorch_model_handler import PyTorchModelHandler
 from .tensorflow_model_handler import TensorFlowModelHandler

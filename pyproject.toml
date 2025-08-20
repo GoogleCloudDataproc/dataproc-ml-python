@@ -28,6 +28,7 @@ test = [
 ]
 dev = [
     "pyink",
+    "pylint",
 ]
 
 [tool.pyink]

@@ -38,9 +38,9 @@ class TestGenAiModelHandler(unittest.TestCase):
                 ("New York", "USA"),
             ],
             ["city", "country"],
-        ).repartition(
+        ).repartition(  # Repartitioning to have multiple rows in same udf batch
             3
-        )  # Repartitioning to have multiple rows in same pandas batch
+        )
 
         cls.expected = cls.spark.createDataFrame(
             [
@@ -60,22 +60,23 @@ class TestGenAiModelHandler(unittest.TestCase):
         cls.spark.stop()
 
     def test_pre_processor(self):
-        pre_processor = (
-            lambda city: "What is the airport code of largest airport in "
-            + city
-            + "? Answer in single word."
-        )
+        def get_prompt(city: str):
+            return (
+                f"What is the airport code of largest airport in {city}? "
+                "Answer in single word."
+            )
+
         gen_ai_handler = (
             GenAiModelHandler()
             .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
             .location(os.getenv("GOOGLE_CLOUD_REGION"))
             .input_col("city")
-            .pre_processor(pre_processor)
+            .pre_processor(get_prompt)
         )
 
         df = gen_ai_handler.transform(self.df)
         self._assert_dataframe_equals(
-            self.expected, df.select("city", "predictions")
+            df.select("city", "predictions"), self.expected
         )
 
     def test_prompt_template(self):
@@ -84,13 +85,14 @@ class TestGenAiModelHandler(unittest.TestCase):
             .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
             .location(os.getenv("GOOGLE_CLOUD_REGION"))
             .prompt(
-                "What is the airport code of largest airport in {city}? Answer in single word."
+                "What is the airport code of largest airport in {city}? "
+                "Answer in single word."
             )
         )
 
         df = gen_ai_handler.transform(self.df)
         self._assert_dataframe_equals(
-            self.expected, df.select("city", "predictions")
+            df.select("city", "predictions"), self.expected
         )
 
     def test_generation_config(self):
@@ -99,20 +101,21 @@ class TestGenAiModelHandler(unittest.TestCase):
             .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
             .location(os.getenv("GOOGLE_CLOUD_REGION"))
             .prompt(
-                "What is the airport code of largest airport in {city}? Answer in single word."
+                "What is the airport code of largest airport in {city}? "
+                "Answer in single word."
             )
             .generation_config(
                 GenerationConfig(candidate_count=2, temperature=0.7)
             )
         )
 
-        # This should fail because response.text property fails for multiple candidates
+        # response.text property fails for multiple candidates
         with self.assertRaises(PythonException) as e:
             gen_ai_handler.transform(self.df).collect()
         self.assertIn("The response has multiple candidates.", str(e.exception))
 
     def test_json_output_with_schema(self):
-        """Tests that the model can return JSON output conforming to a schema."""
+        """Tests that model can return JSON output conforming to a schema."""
         customer_requests_df = self.spark.createDataFrame(
             [
                 (
@@ -138,7 +141,7 @@ class TestGenAiModelHandler(unittest.TestCase):
                 },
                 "item_id": {
                     "type": "string",
-                    "description": "A unique identifier for the product, like a SKU.",
+                    "description": "A unique identifier for the product, SKU.",
                 },
                 "price": {
                     "type": "number",
@@ -191,11 +194,20 @@ class TestGenAiModelHandler(unittest.TestCase):
         self.assertIn("NotFound: 404", str(e.exception))
         self.assertIn("gemini-xyz-4", str(e.exception))
 
-    @staticmethod
-    def _assert_dataframe_equals(df1: DataFrame, df2: DataFrame):
-        assert df1.schema == df2.schema
-        assert df1.exceptAll(df2).isEmpty()
-        assert df2.exceptAll(df1).isEmpty()
+    def _assert_dataframe_equals(
+        self, actual_df: DataFrame, expected_df: DataFrame
+    ):
+        self.assertEqual(
+            actual_df.schema, expected_df.schema, "Schemas are not equal"
+        )
+        self.assertTrue(
+            actual_df.exceptAll(expected_df).isEmpty(),
+            "Actual DataFrame has rows not in Expected",
+        )
+        self.assertTrue(
+            expected_df.exceptAll(actual_df).isEmpty(),
+            "Expected DataFrame has rows not in Actual",
+        )
 
 
 if __name__ == "__main__":

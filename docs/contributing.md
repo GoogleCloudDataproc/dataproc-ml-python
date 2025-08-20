@@ -41,9 +41,12 @@ Guidelines](https://opensource.google/conduct/).
 3. Configure your IDE to the same venv interpreter
 
 ### Code Reviews
-1. Do run the linter and make sure all the tests pass before raising the PR
+1. From the project root dir, run the linter and make sure all the tests 
+   pass before raising the PR
     ```shell
     pyink .
+    pylint google/
+    pylint --disable=protected-access,missing-function-docstring,missing-module-docstring,missing-class-docstring tests/
     pytest .
     ```
 2. Add the output of the test run in the PR description

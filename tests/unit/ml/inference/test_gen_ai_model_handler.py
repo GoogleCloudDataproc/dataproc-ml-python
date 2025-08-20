@@ -18,17 +18,17 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 import pandas as pd
 import tenacity
-from google.api_core import exceptions
-from pyspark.sql.types import StringType
 
+from google.api_core import exceptions
 from google.cloud.dataproc.ml.inference.gen_ai_model_handler import (
     GenAiModelHandler,
     GeminiModel,
     ModelProvider,
 )
+from pyspark.sql.types import StringType
 from vertexai.generative_models import GenerationConfig
 
-# The path for patching must be where the object is *looked up*, not where it's defined.
+# The path for patching must be where the object is *looked up*.
 GEN_AI_HANDLER_PATH = "google.cloud.dataproc.ml.inference.gen_ai_model_handler"
 
 
@@ -78,7 +78,7 @@ class TestGeminiModel(unittest.TestCase):
 
     @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
     def test_call_with_retry_on_api_error(self, mock_generative_model):
-        """Test that the model retries on a retryable API error and eventually succeeds."""
+        """Tests that the model retries on a retryable API error."""
         # 1. Setup mock model to simulate failure then success
         mock_model_instance = mock_generative_model.return_value
         successful_response = MagicMock()
@@ -154,7 +154,7 @@ class TestGeminiModel(unittest.TestCase):
 
     @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
     def test_call_fails_after_exhausting_retries(self, mock_generative_model):
-        """Test that the call fails if the API error persists after all retries."""
+        """Tests that call() fails after exhausting all retries."""
         # 1. Setup mock model to always fail
         mock_model_instance = mock_generative_model.return_value
         mock_model_instance.generate_content_async = AsyncMock(
@@ -190,7 +190,7 @@ class TestGeminiModel(unittest.TestCase):
 
     @patch(f"{GEN_AI_HANDLER_PATH}.GenerativeModel")
     def test_max_concurrent_requests_is_respected(self, mock_generative_model):
-        """Test that the semaphore correctly limits the number of concurrent API calls."""
+        """Tests that the semaphore limits concurrent API calls."""
         # 1. Setup
         max_concurrent_requests = 3
         total_prompts = 10
@@ -207,14 +207,15 @@ class TestGeminiModel(unittest.TestCase):
 
             async def mock_api_call(
                 self, prompt: str, generation_config: GenerationConfig
-            ):
+            ):  # pylint: disable=unused-argument
                 async with self._lock:
                     self.active_calls += 1
                     self.max_concurrent_calls = max(
                         self.max_concurrent_calls, self.active_calls
                     )
 
-                # Simulate I/O wait. It allows the asyncio event loop to switch to other tasks.
+                # Simulate I/O wait.
+                # It allows the asyncio event loop to switch to other tasks.
                 await asyncio.sleep(0.01)
 
                 async with self._lock:
@@ -274,7 +275,7 @@ class TestGenAiModelHandler(unittest.TestCase):
         self.assertEqual(self.handler._model, model_name)
 
     def test_prompt_with_single_placeholder_succeeds(self):
-        """Test that prompt() correctly configures the handler with a valid template."""
+        """Test that prompt() configures the handler with a valid template."""
         template = "What is the capital of {country}?"
         self.handler.prompt(template)
 
@@ -286,22 +287,29 @@ class TestGenAiModelHandler(unittest.TestCase):
         self.assertEqual(processed_prompt, "What is the capital of France?")
 
     def test_prompt_with_no_placeholders_raises_error(self):
-        """Test that prompt() raises ValueError for a template with no placeholders."""
+        """Tests prompt() raises ValueError for no placeholders."""
         template = "This is a static prompt."
         with self.assertRaisesRegex(
             ValueError,
-            r"The prompt template must contain exactly one placeholder column, but found 0: \[\]."
-            r" Input to prompt should be dynamic based on each row.",
+            (
+                r"The prompt template must contain exactly one placeholder "
+                r"column, but found 0: \[\]. Input to prompt should be "
+                r"dynamic based on each row."
+            ),
         ):
             self.handler.prompt(template)
 
     def test_prompt_with_multiple_placeholders_raises_error(self):
-        """Test that prompt() raises ValueError for a template with multiple placeholders."""
+        """Tests prompt() raises ValueError for multiple placeholders."""
         template = "What is the population of {city} in {country}?"
         with self.assertRaisesRegex(
             ValueError,
-            r"The prompt template must contain exactly one placeholder column, but found 2: \['city', 'country'\]."
-            r" To use multiple columns in the prompt, first combine them into a new derived column using dataframe APIs.",
+            (
+                r"The prompt template must contain exactly one placeholder "
+                r"column, but found 2: \['city', 'country'\]. To use "
+                r"multiple columns in the prompt, first combine them into a "
+                r"new derived column using dataframe APIs."
+            ),
         ):
             self.handler.prompt(template)
 
@@ -310,7 +318,7 @@ class TestGenAiModelHandler(unittest.TestCase):
     def test_generation_config_is_passed_to_model(
         self, mock_gemini_model, mock_aiplatform
     ):
-        """Test that generation_config() sets the config and is passed to the model."""
+        """Tests generation_config() sets the config and passes it to model."""
         project = "my-project"
         location = "us-east1"
         mock_gen_config = MagicMock(spec=GenerationConfig)
@@ -328,7 +336,7 @@ class TestGenAiModelHandler(unittest.TestCase):
             project=project, location=location
         )
         mock_gemini_model.assert_called_once_with(
-            self.handler._model,
+            model_name=self.handler._model,
             retry_strategy=self.handler._retry_strategy,
             max_concurrent_requests=self.handler._max_concurrent_requests,
             generation_config=mock_gen_config,
@@ -353,7 +361,7 @@ class TestGenAiModelHandler(unittest.TestCase):
             project=project, location=location
         )
         mock_gemini_model.assert_called_once_with(
-            model_name,
+            model_name=model_name,
             retry_strategy=self.handler._retry_strategy,
             max_concurrent_requests=max_requests,
             generation_config=None,

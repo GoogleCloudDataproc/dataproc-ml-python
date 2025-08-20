@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Defines the base classes for handling model inference on Spark DataFrames."""
+
 from abc import ABC
 from typing import Iterator, Callable, Any
 
@@ -29,8 +31,7 @@ class Model(ABC):
     """
 
     def call(self, batch: pd.Series) -> pd.Series:
-        """
-        If single_call fails for any row, the entire Spark task will fail.
+        """Applies the model to the given input batch.
 
         Args:
             batch: A pandas Series containing the batch of inputs to process.
@@ -42,28 +43,30 @@ class Model(ABC):
 
 
 class BaseModelHandler(ABC):
+    """An abstract base class for applying a model to a Spark DataFrame.
+
+    This handler uses the high-performance Pandas UDF (iterator of series)
+    pattern to apply a model to each partition of a DataFrame. It is
+    designed to be configured using a builder pattern.
+
+    Subclasses must implement the `_load_model` method, which is responsible
+    for loading the model instance on each Spark executor.
+
+    Example:
+        >>> class MyModelHandler(BaseModelHandler):
+        ...     def _load_model(self):
+        ...         return MyModel()
+        ...
+        >>> handler = MyModelHandler()
+        >>> result_df = (
+        ...     handler.input_col("features")
+        ...     .output_col("predictions")
+        ...     .pre_processor(my_pre_processor)
+        ...     .transform(df)
+        ... )
+    """
 
     def __init__(self):
-        """An abstract base class for applying a model to a Spark DataFrame.
-
-        This handler uses the high-performance Pandas UDF (iterator of series)
-        pattern to apply a model to each partition of a DataFrame. It is designed
-        to be configured using a builder pattern.
-
-        Subclasses must implement the `_load_model` method, which is responsible
-        for loading the model instance on each Spark executor.
-
-        Example usage:
-            class MyModelHandler(BaseModelHandler):
-                def _load_model(self):
-                    return MyModel()
-
-            handler = MyModelHandler()
-            result_df = handler.input_col("features") \\
-                               .output_col("predictions") \\
-                               .pre_processor(my_pre_processor) \\
-                               .transform(df)
-        """
         self._input_col = None
         self._output_col: str = "predictions"
         self._return_type: DataType = StructType()
@@ -96,7 +99,8 @@ class BaseModelHandler(ABC):
         """Sets the name of the output column to be created.
 
         Args:
-            output_col: The name for the new column that will store the predictions.
+            output_col: The name for the new column that will store
+                predictions. Defaults to "predictions".
 
         Returns:
             The handler instance for method chaining.
@@ -119,7 +123,6 @@ class BaseModelHandler(ABC):
         self._return_type = return_type
         return self
 
-    # TODO: Consider applying the pre-processor on the entire row instead of single col
     def pre_processor(
         self, pre_processor: Callable[[Any], Any]
     ) -> "BaseModelHandler":
@@ -160,14 +163,17 @@ class BaseModelHandler(ABC):
     def transform(self, df: DataFrame) -> DataFrame:
         """Transforms a DataFrame by applying the model.
 
-        This is the main entry point for the handler. It adds a new column
-        to the input DataFrame containing the model's predictions.
+        This is the main function that runs the model and appends its
+        predictions as a new column to the input Dataframe.
 
         Args:
             df: The input Spark DataFrame.
 
         Returns:
             A new DataFrame with the prediction column added.
+
+        Raises:
+            ValueError: If the input or output column is not set.
         """
         if not self._input_col:
             raise ValueError("Input column must be set using .input_col().")

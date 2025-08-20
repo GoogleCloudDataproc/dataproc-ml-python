@@ -23,7 +23,8 @@ def download_image_from_gcs(image_path: str) -> bytes:
     parsed_path = urllib.parse.urlparse(image_path)
     if parsed_path.scheme != "gs":
         raise ValueError(
-            f"Unsupported GCS path scheme: {parsed_path.scheme}. Must be 'gs://'."
+            f"Unsupported GCS path scheme: {parsed_path.scheme}. "
+            "Must be 'gs://'."
         )
 
     bucket_name = parsed_path.netloc

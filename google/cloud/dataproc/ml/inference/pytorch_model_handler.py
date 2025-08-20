@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import io
+"""A module for handling PyTorch model inference on Spark DataFrames."""
 
+from io import BytesIO
 from typing import Type, Optional, Callable
 
 import pandas as pd
@@ -23,7 +24,7 @@ from google.cloud.exceptions import NotFound
 from google.cloud import storage
 from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
 from google.cloud.dataproc.ml.inference.base_model_handler import Model
-from google.cloud.dataproc.ml.utils.gcs_utils import validate_and_parse_gcs_path
+from google.cloud.dataproc.ml.utils.gcs_utils import _validate_and_parse_gcs_path
 
 
 class PyTorchModel(Model):
@@ -40,18 +41,24 @@ class PyTorchModel(Model):
         """Initializes the PyTorchModel.
 
         Args:
-            model_path: The GCS path to the saved PyTorch model (e.g., "gs://my-bucket/model.pt").
-            device: (Optional) The device to load the model on ("cpu" or "cuda").
-            model_class: (Optional) The Python class of the PyTorch model when we need to load from statedict
-            model_args: (Optional) A tuple of positional arguments to pass to `model_class` constructor.
-            model_kwargs: (Optional) A dictionary of keyword arguments to pass to `model_class` constructor.
+            model_path: The GCS path to the saved PyTorch model (e.g.,
+                "gs://my-bucket/model.pt").
+            device: (Optional) The device to load the model on ("cpu" or
+                "cuda").
+            model_class: (Optional) The Python class of the PyTorch model when
+                we need to load from statedict
+            model_args: (Optional) A tuple of positional arguments to pass to
+                `model_class` constructor.
+            model_kwargs: (Optional) A dictionary of keyword arguments to pass
+                to `model_class` constructor.
         """
         self._model_path = model_path
-        self._device = (
-            device
-            if device
-            else ("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        if device:
+            self._device = device
+        elif torch.cuda.is_available():
+            self._device = "cuda"
+        else:
+            self._device = "cpu"
         self._model_class = model_class
         self._model_args = model_args if model_args is not None else ()
         self._model_kwargs = model_kwargs if model_kwargs is not None else {}
@@ -59,12 +66,13 @@ class PyTorchModel(Model):
         # Set model to evaluation mode
         self._underlying_model.eval()
 
-    def _state_dict_model_load(self, model_weights):
+    def _state_dict_model_load(self, model_weights: BytesIO):
         """Loads a model's state_dict after performing upfront validations."""
 
         if not callable(self._model_class):
             raise TypeError(
-                f"model_class must be a PyTorch model class, but got {type(self._model_class)}."
+                "model_class must be a PyTorch model class, but got "
+                f"{type(self._model_class)}."
             )
 
         model_instance = self._model_class(
@@ -74,8 +82,9 @@ class PyTorchModel(Model):
         if not isinstance(model_instance, torch.nn.Module):
             model_class_name = getattr(self._model_class, "__name__", "unknown")
             raise TypeError(
-                f"The provided callable '{model_class_name}' did not return a "
-                f"torch.nn.Module instance. Instead, it returned type: {type(model_instance)}."
+                f"The provided callable '{model_class_name}' did not return "
+                "a torch.nn.Module instance. Instead, it returned type: "
+                f"{type(model_instance)}."
             )
 
         try:
@@ -88,9 +97,10 @@ class PyTorchModel(Model):
                     self._model_class, "__name__", "unknown"
                 )
                 raise TypeError(
-                    f"Expected a state_dict (dict) for architecture '{model_class_name}', "
-                    f"but the loaded file was of type {type(state_dict)}. "
-                    "Full model load is only attempted when a model architecture is NOT provided."
+                    "Expected a state_dict (dict) for architecture "
+                    f"'{model_class_name}', but the loaded file was of type "
+                    f"{type(state_dict)}. Full model load is only attempted "
+                    "when a model architecture is NOT provided."
                 )
 
             model_instance.load_state_dict(state_dict)
@@ -103,7 +113,7 @@ class PyTorchModel(Model):
                 f"provided '{model_class_name}' architecture: {e}"
             )
 
-    def _full_model_load(self, model):
+    def _full_model_load(self, model: BytesIO):
         """Loads a full PyTorch model object from a file-like object."""
 
         try:
@@ -111,22 +121,27 @@ class PyTorchModel(Model):
                 model, map_location=self._device, weights_only=False
             )
         except Exception as e:
-            # This catches errors during the load process (e.g., pickle errors, corrupted file).
+            # This catches errors during the load process (e.g., pickle
+            # errors, corrupted file).
             raise RuntimeError(
-                f"Failed to load the PyTorch model object from {self._model_path}. "
-                f"The file may be corrupted or not a valid PyTorch model. Original error: {e}"
+                f"Failed to load the PyTorch model object {self._model_path}. "
+                f"The file may be corrupted or not a valid PyTorch model. "
+                f"Original error: {e}"
             )
 
         if not isinstance(model_instance, torch.nn.Module):
             raise TypeError(
-                f"The file at {self._model_path} was loaded successfully, but it is not a "
-                f"torch.nn.Module instance. Instead, it is of type: {type(model_instance)}."
+                f"The file at {self._model_path} was loaded successfully, but "
+                "it is not a torch.nn.Module instance. Instead, it is of "
+                f"type: {type(model_instance)}."
             )
         return model_instance
 
-    def _download_gcs_blob_to_buffer(self, bucket_name, blob_name):
+    def _download_gcs_blob_to_buffer(
+        self, bucket_name: str, blob_name: str
+    ) -> BytesIO:
         """Downloads a GCS blob into an in-memory BytesIO buffer."""
-        model_data_buffer = io.BytesIO()
+        model_data_buffer = BytesIO()
         try:
             client = storage.Client()
             blob = client.bucket(bucket_name).blob(blob_name)
@@ -144,9 +159,9 @@ class PyTorchModel(Model):
             )
 
     def _load_model_from_gcs(self):
-        """Loads the PyTorch model from GCS with verbose logging for debugging."""
+        """Loads the PyTorch model from GCS"""
 
-        bucket_name, blob_name = validate_and_parse_gcs_path(self._model_path)
+        bucket_name, blob_name = _validate_and_parse_gcs_path(self._model_path)
 
         model_data_buffer = self._download_gcs_blob_to_buffer(
             bucket_name, blob_name
@@ -158,10 +173,10 @@ class PyTorchModel(Model):
             return self._full_model_load(model_data_buffer)
 
     def call(self, batch: pd.Series) -> pd.Series:
-        """
-        Processes a batch of inputs for the PyTorch model.
-        Assumes the 'batch' pandas Series contains preprocessed data that can be directly
-        converted into PyTorch tensors.
+        """Processes a batch of inputs for the PyTorch model.
+
+        Assumes the 'batch' pandas Series contains preprocessed data that can
+        be directly converted into PyTorch tensors.
         """
         try:
             batch_tensors = [
@@ -171,10 +186,12 @@ class PyTorchModel(Model):
             batch_tensor = torch.stack(batch_tensors).to(self._device)
         except Exception as e:
             raise ValueError(
-                f"Error converting batch to PyTorch tensors: {e}. "
-                "Ensure preprocessed data in the Series is consistently shaped and numerical."
+                f"Error converting batch to PyTorch tensors: {e}. Ensure "
+                "preprocessed data in the Series is consistently shaped and "
+                "numerical."
             )
-        # disables gradient calculation as we aren't training during inference, this is faster and memory efficient
+        # Disables gradient calculation as we aren't training during inference,
+        # this is faster and memory efficient.
         with torch.no_grad():
             predictions = self._underlying_model(batch_tensor)
 
@@ -182,39 +199,51 @@ class PyTorchModel(Model):
 
 
 class PyTorchModelHandler(BaseModelHandler):
-    """
-     A handler for running inference with PyTorch models on Spark DataFrames.
-     Example:
+    """A handler for running inference with PyTorch models on Spark DataFrames.
 
-    Example usage:
-    Load Full model saved in gcs:
-    result_df = PyTorchModelHandler()
-             .model_path("gs://test-bucket/test-model.pt")
-             .device("cpu") #optional
-             .input_col("input_col")
-             .output_col("prediction")
-             .pre_processor(preprocess_function) #optional
-             .set_return_type(ArrayType(FloatType()))
-             .transform(input_df)
+    This handler supports two primary modes of operation:
+    1.  Loading a full, saved PyTorch model object.
+    2.  Loading a model from a `state_dict` (weights file), which requires
+        providing the model's class architecture separately.
 
-     Load state dict saved in gcs:
-     1. Define the model's class and constructor arguments
-       eg: For ResNet-18, passing weights=None initializes an empty model.
-     model_class = models.resnet18
-     model_kwargs = {"weights": None} # Or weights=False in older versions
+    Required Configuration:
+        - `.model_path(str)`: The GCS path to the model file (`.pt`, `.pth`).
+        - `.input_col(str)`: The column in the DataFrame to use as input.
+        - `.set_model_architecture(...)`: This is **required** when loading from
+          a state dict, but should **not** be used when loading a full model.
 
-     # 2. Configure the handler
-     result_df = (
-         PyTorchModelHandler()
-         .model_path("gs://my-bucket/resnet18_statedict.pt")
-         .device("cpu") #optional
-         .set_model_architecture(model_class, **model_kwargs)
-         .input_col("features")
-         .output_col("predictions")
-         .pre_processor(preprocess_function) #optional
-         .set_return_type(ArrayType(FloatType()))
-         .transform(input_df)
-     )
+    Optional Configuration:
+        - `.output_col(str)`: The name for the prediction output column
+          (defaults to "predictions").
+        - `.device(str)`: The device to run on (e.g., "cpu", "cuda"). Defaults
+          to "cuda" if available.
+        - `.pre_processor(callable)`: A function to preprocess input data.
+        - `.set_return_type(DataType)`: The Spark `DataType` of the output.
+
+    Example:
+        Load a full model saved in GCS:
+
+        >>> result_df = (
+        ...     PyTorchModelHandler()
+        ...     .model_path("gs://test-bucket/test-model.pt")
+        ...     .input_col("input_col")
+        ...     .output_col("prediction")
+        ...     .transform(input_df)
+        ... )
+
+        Load a model from a state dictionary saved in GCS:
+
+        >>> from torchvision import models
+        >>> model_class = models.resnet18
+        >>> model_kwargs = {"weights": None}
+        >>> result_df = (
+        ...     PyTorchModelHandler()
+        ...     .model_path("gs://my-bucket/resnet18_statedict.pt")
+        ...     .set_model_architecture(model_class, **model_kwargs)
+        ...     .input_col("features")
+        ...     .output_col("predictions")
+        ...     .transform(input_df)
+        ... )
     """
 
     def __init__(self):
@@ -226,15 +255,34 @@ class PyTorchModelHandler(BaseModelHandler):
         self._model_kwargs: Optional[dict] = None
 
     def model_path(self, path: str) -> "PyTorchModelHandler":
-        """Sets the GCS path to the saved PyTorch model."""
+        """Sets the GCS path to the saved PyTorch model.
 
+        Args:
+            path: The GCS path to the model file (e.g., "gs://bucket/model.pt").
+
+        Returns:
+            The handler instance for method chaining.
+
+        Raises:
+            ValueError: If the path does not start with "gs://".
+        """
         if not path.startswith("gs://"):
             raise ValueError("Model path must start with 'gs://'")
         self._model_path = path
         return self
 
     def device(self, device: str) -> "PyTorchModelHandler":
-        """Sets the device to load the PyTorch model on."""
+        """Sets the device to load the PyTorch model on.
+
+        Args:
+            device: The device to use, either "cpu" or "cuda".
+
+        Returns:
+            The handler instance for method chaining.
+
+        Raises:
+            ValueError: If the device is not "cpu" or "cuda".
+        """
         if device not in ["cpu", "cuda"]:
             raise ValueError("Device must be 'cpu' or 'cuda'.")
         self._device = device
@@ -243,17 +291,22 @@ class PyTorchModelHandler(BaseModelHandler):
     def set_model_architecture(
         self, model_callable: Callable[..., torch.nn.Module], *args, **kwargs
     ) -> "PyTorchModelHandler":
-        """
-        Sets the PyTorch model's architecture using a class or a factory function.
+        """Sets the PyTorch model's architecture using a class or a factory
+        function.
 
         This is required if you are loading a model saved as a state_dict.
 
         Args:
-            model_callable: The model's class (e.g., `MyImageClassifier`) or a factory
-                            function (e.g., `torchvision.models.resnet18`) that
-                            returns a model instance.
-            *args: Positional arguments for the model's constructor or factory function.
-            **kwargs: Keyword arguments for the model's constructor or factory function.
+            model_callable: The model's class (e.g., `MyImageClassifier`) or a
+                factory function (e.g., `torchvision.models.resnet18`) that
+                returns a model instance.
+            *args: Positional arguments for the model's constructor or factory
+                function.
+            **kwargs: Keyword arguments for the model's constructor or factory
+                function.
+
+        Returns:
+            The handler instance for method chaining.
         """
         self._model_class = model_callable
         self._model_args = args

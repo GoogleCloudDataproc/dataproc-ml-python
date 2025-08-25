@@ -17,14 +17,14 @@
 from io import BytesIO
 from typing import Type, Optional, Callable
 
+import numpy as np
 import pandas as pd
 import torch
-from google.cloud.exceptions import NotFound
-
 from google.cloud import storage
 from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
 from google.cloud.dataproc.ml.inference.base_model_handler import Model
 from google.cloud.dataproc.ml.utils.gcs_utils import _validate_and_parse_gcs_path
+from google.cloud.exceptions import NotFound
 
 
 class PyTorchModel(Model):
@@ -173,26 +173,25 @@ class PyTorchModel(Model):
             return self._full_model_load(model_data_buffer)
 
     def call(self, batch: pd.Series) -> pd.Series:
-        """Processes a batch of inputs for the PyTorch model.
-
-        Assumes the 'batch' pandas Series contains preprocessed data that can
-        be directly converted into PyTorch tensors.
+        """
+        Processes a batch of inputs for the PyTorch model.
         """
         try:
-            batch_tensors = [
-                torch.tensor(item, dtype=torch.float32)
-                for item in batch.tolist()
-            ]
-            batch_tensor = torch.stack(batch_tensors).to(self._device)
+            np_array = np.stack(batch.values)
+            batch_tensor = torch.from_numpy(np_array).to(
+                dtype=torch.float32, device=self._device
+            )
+
+            if batch_tensor.dim() == 1:
+                batch_tensor = batch_tensor.unsqueeze(1)
         except Exception as e:
             raise ValueError(
                 f"Error converting batch to PyTorch tensors: {e}. Ensure "
                 "preprocessed data in the Series is consistently shaped and "
-                "numerical."
+                "of a uniform type."
             )
-        # Disables gradient calculation as we aren't training during inference,
-        # this is faster and memory efficient.
-        with torch.no_grad():
+
+        with torch.inference_mode():
             predictions = self._underlying_model(batch_tensor)
 
         return pd.Series(predictions.cpu().tolist(), index=batch.index)

@@ -36,3 +36,6 @@ eggs/
 *.bak
 *.swp
 *.swo
+
+# Ignore Sphinx build artifacts
+docs/_build

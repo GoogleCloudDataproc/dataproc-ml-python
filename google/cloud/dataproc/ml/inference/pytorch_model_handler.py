@@ -23,7 +23,9 @@ import torch
 
 from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
 from google.cloud.dataproc.ml.inference.base_model_handler import Model
-from google.cloud.dataproc.ml.utils.gcs_utils import _download_gcs_blob_to_buffer
+from google.cloud.dataproc.ml._utils._gcs_utils import (
+    download_gcs_blob_to_buffer,
+)
 
 
 class PyTorchModel(Model):
@@ -137,7 +139,7 @@ class PyTorchModel(Model):
 
     def _load_model_from_gcs(self):
         """Loads the PyTorch model from GCS"""
-        model_data_buffer = _download_gcs_blob_to_buffer(self._model_path)
+        model_data_buffer = download_gcs_blob_to_buffer(self._model_path)
         if self._model_class:
             return self._state_dict_model_load(model_data_buffer)
         else:

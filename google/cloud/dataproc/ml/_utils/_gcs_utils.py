@@ -21,7 +21,7 @@ from google.api_core.exceptions import NotFound
 from google.cloud import storage
 
 
-def _validate_and_parse_gcs_path(model_path: str):
+def validate_and_parse_gcs_path(model_path: str):
     """Validates the GCS path format and extracts bucket and blob names.
 
     Args:
@@ -55,9 +55,9 @@ def _validate_and_parse_gcs_path(model_path: str):
     return bucket_name, blob_name
 
 
-def _download_gcs_blob_to_buffer(model_path: str) -> BytesIO:
+def download_gcs_blob_to_buffer(model_path: str) -> BytesIO:
     """Downloads a GCS blob into an in-memory BytesIO buffer."""
-    bucket_name, blob_name = _validate_and_parse_gcs_path(model_path)
+    bucket_name, blob_name = validate_and_parse_gcs_path(model_path)
     data_buffer = BytesIO()
     try:
         client = storage.Client()

@@ -31,6 +31,10 @@ dev = [
     "pylint",
     "build"
 ]
+docs = [
+    "sphinx",
+    "sphinx_rtd_theme",
+]
 
 [tool.pyink]
 line-length = 80 # Default is 88

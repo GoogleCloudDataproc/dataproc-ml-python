@@ -32,10 +32,10 @@ Guidelines](https://opensource.google/conduct/).
     python3.11 -m venv <your-env>
     ```
 
-2. Install all the build, dev and test dependencies
+2. Install all the build, dev, test and docs dependencies
 
     ```shell
-    pip install ".[dev, test]"
+    pip install ".[dev, test, docs]"
     ```
 
 3. Configure your IDE to the same venv interpreter
@@ -50,6 +50,15 @@ Guidelines](https://opensource.google/conduct/).
     pytest .
     ```
 2. Add the output of the test run in the PR description
+
+### Documentation
+Keep documentation up to date with your changes and only expose Public APIs.
+
+To view the public docs, run
+```shell 
+sphinx-build -b html docs/ docs/_build/html
+open docs/_build/html/index.html
+```
 
 All submissions, including submissions by project members, require review. We
 use GitHub pull requests for this purpose. Consult

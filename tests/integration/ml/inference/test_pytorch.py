@@ -278,7 +278,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
 
         with self.assertRaisesRegex(
             PythonException,
-            "FileNotFoundError: Model file not found at GCS path.*",
+            "FileNotFoundError: File not found at GCS path.*",
         ):
             pytorch_handler.transform(df).collect()
 

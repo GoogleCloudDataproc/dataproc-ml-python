@@ -186,11 +186,8 @@ class TestGenAiModelHandler(unittest.TestCase):
             .input_col("city")
         )
 
-        df = self.spark.createDataFrame(
-            [("Bengaluru", "India")], ["city", "country"]
-        )
         with self.assertRaises(PythonException) as e:
-            gen_ai_handler.transform(df).collect()  # collect to force eval
+            gen_ai_handler.transform(self.df).collect()  # collect to force eval
         self.assertIn("NotFound: 404", str(e.exception))
         self.assertIn("gemini-xyz-4", str(e.exception))
 

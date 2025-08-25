@@ -20,11 +20,10 @@ from typing import Type, Optional, Callable
 import numpy as np
 import pandas as pd
 import torch
-from google.cloud import storage
+
 from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
 from google.cloud.dataproc.ml.inference.base_model_handler import Model
-from google.cloud.dataproc.ml.utils.gcs_utils import _validate_and_parse_gcs_path
-from google.cloud.exceptions import NotFound
+from google.cloud.dataproc.ml.utils.gcs_utils import _download_gcs_blob_to_buffer
 
 
 class PyTorchModel(Model):
@@ -80,10 +79,9 @@ class PyTorchModel(Model):
         )
 
         if not isinstance(model_instance, torch.nn.Module):
-            model_class_name = getattr(self._model_class, "__name__", "unknown")
             raise TypeError(
-                f"The provided callable '{model_class_name}' did not return "
-                "a torch.nn.Module instance. Instead, it returned type: "
+                f"The provided callable '{self._model_class_name()}' did not "
+                "return a torch.nn.Module instance. Instead, it returned type: "
                 f"{type(model_instance)}."
             )
 
@@ -93,25 +91,25 @@ class PyTorchModel(Model):
             )
 
             if not isinstance(state_dict, dict):
-                model_class_name = getattr(
-                    self._model_class, "__name__", "unknown"
-                )
                 raise TypeError(
                     "Expected a state_dict (dict) for architecture "
-                    f"'{model_class_name}', but the loaded file was of type "
-                    f"{type(state_dict)}. Full model load is only attempted "
-                    "when a model architecture is NOT provided."
+                    f"'{self._model_class_name()}', but the loaded file was of "
+                    f"type {type(state_dict)}. Full model load is only  "
+                    "attempted when a model architecture is NOT provided."
                 )
 
             model_instance.load_state_dict(state_dict)
             return model_instance
 
         except RuntimeError as e:
-            model_class_name = getattr(self._model_class, "__name__", "unknown")
             raise RuntimeError(
                 f"Failed to load state_dict from {self._model_path} into the "
-                f"provided '{model_class_name}' architecture: {e}"
+                f"provided '{self._model_class_name()}' architecture: {e}"
             )
+
+    def _model_class_name(self):
+        model_class_name = getattr(self._model_class, "__name__", "unknown")
+        return model_class_name
 
     def _full_model_load(self, model: BytesIO):
         """Loads a full PyTorch model object from a file-like object."""
@@ -137,36 +135,9 @@ class PyTorchModel(Model):
             )
         return model_instance
 
-    def _download_gcs_blob_to_buffer(
-        self, bucket_name: str, blob_name: str
-    ) -> BytesIO:
-        """Downloads a GCS blob into an in-memory BytesIO buffer."""
-        model_data_buffer = BytesIO()
-        try:
-            client = storage.Client()
-            blob = client.bucket(bucket_name).blob(blob_name)
-            blob.download_to_file(model_data_buffer)
-            model_data_buffer.seek(0)
-            return model_data_buffer
-        except NotFound:
-            raise FileNotFoundError(
-                f"Model file not found at GCS path: {self._model_path}"
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to download model from GCS at {self._model_path}. "
-                f"Check permissions/path. Original error: {e}"
-            )
-
     def _load_model_from_gcs(self):
         """Loads the PyTorch model from GCS"""
-
-        bucket_name, blob_name = _validate_and_parse_gcs_path(self._model_path)
-
-        model_data_buffer = self._download_gcs_blob_to_buffer(
-            bucket_name, blob_name
-        )
-
+        model_data_buffer = _download_gcs_blob_to_buffer(self._model_path)
         if self._model_class:
             return self._state_dict_model_load(model_data_buffer)
         else:

@@ -17,6 +17,7 @@ import os
 import unittest
 import uuid
 
+import pandas as pd
 import numpy as np
 import torch
 import torchvision.models as models
@@ -29,10 +30,17 @@ from google.cloud import storage, exceptions as gcloud_exceptions
 from google.cloud.dataproc.ml.inference import PyTorchModelHandler
 from tests.utils.gcs_util import download_image_from_gcs
 from tests.utils.pytorch_util import (
-    preprocess_real_image_data,
+    preprocess_real_image_data as scalar_preprocess_real_image_data,
     save_pytorch_model_full_object,
     save_pytorch_model_state_dict,
 )
+
+
+def vectorized_preprocess_real_image_data(
+    image_bytes_series: pd.Series,
+) -> pd.Series:
+    """Vectorized preprocessor for ResNet."""
+    return image_bytes_series.apply(scalar_preprocess_real_image_data)
 
 
 class TestPyTorchModelHandler(unittest.TestCase):
@@ -57,7 +65,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         ]
 
         with torch.no_grad():
-            input_tensor = preprocess_real_image_data(
+            input_tensor = scalar_preprocess_real_image_data(
                 cls.sample_real_image_bytes
             ).unsqueeze(
                 0
@@ -126,9 +134,9 @@ class TestPyTorchModelHandler(unittest.TestCase):
         pytorch_handler = (
             self.pytorch_handler.model_path(self.gcs_full_model_path)
             .device("cpu")
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions_full_model_object")
-            .pre_processor(preprocess_real_image_data)
+            .pre_processor(vectorized_preprocess_real_image_data)
             .set_return_type(ArrayType(FloatType()))
         )
 
@@ -173,9 +181,9 @@ class TestPyTorchModelHandler(unittest.TestCase):
             .device("cpu")
             # Use weights=None to initialize an empty model structure.
             .set_model_architecture(resnet18, weights=None)
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions_statedict")
-            .pre_processor(preprocess_real_image_data)
+            .pre_processor(vectorized_preprocess_real_image_data)
             .set_return_type(ArrayType(FloatType()))
         )
 
@@ -209,7 +217,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         handler = (
             self.pytorch_handler.model_path(state_dict_path)
             .device("cpu")
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
             .set_return_type(ArrayType(FloatType()))
         )
@@ -231,7 +239,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         pytorch_handler = (
             self.pytorch_handler.model_path(path_only_scheme)
             .device("cpu")
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
             .set_return_type(ArrayType(FloatType()))
         )
@@ -251,7 +259,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         handler_no_object = (
             self.pytorch_handler.model_path(path_no_object)
             .device("cpu")
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
             .set_return_type(ArrayType(FloatType()))
         )
@@ -268,7 +276,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         pytorch_handler = (
             self.pytorch_handler.model_path(non_existent_path)
             .device("cpu")
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
             .set_return_type(ArrayType(FloatType()))
         )
@@ -286,7 +294,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         """Tests that an error is raised if model_path is not set."""
         pytorch_handler = (
             self.pytorch_handler.device("cpu")
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
             .set_return_type(ArrayType(FloatType()))
         )
@@ -307,7 +315,7 @@ class TestPyTorchModelHandler(unittest.TestCase):
         pytorch_handler = (
             self.pytorch_handler.model_path(non_model_path)
             .device("cpu")
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
             .set_return_type(ArrayType(FloatType()))
         )

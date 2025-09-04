@@ -13,14 +13,16 @@
 # limitations under the License.
 
 """Defines the base classes for handling model inference on Spark DataFrames."""
-
+import logging
 from abc import ABC
-from typing import Iterator, Callable, Any
+from typing import Any, Callable, Iterator, Tuple
 
 import pandas as pd
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import pandas_udf, col
 from pyspark.sql.types import DataType, StructType
+
+logger = logging.getLogger(__name__)
 
 
 class Model(ABC):
@@ -59,7 +61,7 @@ class BaseModelHandler(ABC):
         ...
         >>> handler = MyModelHandler()
         >>> result_df = (
-        ...     handler.input_col("features")
+        ...     handler.input_cols("features")
         ...     .output_col("predictions")
         ...     .pre_processor(my_pre_processor)
         ...     .transform(df)
@@ -67,10 +69,10 @@ class BaseModelHandler(ABC):
     """
 
     def __init__(self):
-        self._input_col = None
+        self._input_cols: Tuple[str, ...] = None
         self._output_col: str = "predictions"
         self._return_type: DataType = StructType()
-        self._pre_processor: Callable[[Any], Any] = None
+        self._pre_processor: Callable[..., pd.Series] = None
 
     def _load_model(self) -> Model:
         """Loads the model instance.
@@ -83,16 +85,23 @@ class BaseModelHandler(ABC):
         """
         raise NotImplementedError
 
-    def input_col(self, input_col: str) -> "BaseModelHandler":
-        """Sets the name of the input column from the DataFrame.
+    def input_cols(self, *input_cols: str) -> "BaseModelHandler":
+        """Sets the names of the input columns from the DataFrame.
 
         Args:
-            input_col: The name of the column to be used as input for the model.
+            *input_cols: The names of the columns to be used as input for the
+                model, passed as multiple string arguments (e.g.,
+                `.input_cols('col1', 'col2')`).
 
         Returns:
             The handler instance for method chaining.
+
+        Raises:
+            ValueError: If no input columns are provided.
         """
-        self._input_col = input_col
+        if not input_cols:
+            raise ValueError("At least one input column must be provided.")
+        self._input_cols = input_cols
         return self
 
     def output_col(self, output_col: str) -> "BaseModelHandler":
@@ -124,13 +133,27 @@ class BaseModelHandler(ABC):
         return self
 
     def pre_processor(
-        self, pre_processor: Callable[[Any], Any]
+        self, pre_processor: Callable[..., pd.Series]
     ) -> "BaseModelHandler":
-        """Sets the preprocessing function to be applied to the input column.
+        """Sets the vectorized preprocessing function.
+
+        The function is applied to the input columns for each batch,
+        return of which is then applied to the model.
+        It should accept one or more pandas Series as
+        input (matching the number of input columns) in same order as
+        `input_cols` and return a single pandas Series.
+
+        Example for single input:
+            def my_preprocessor(col1: pd.Series) -> pd.Series:
+                return col1 * 2
+
+        Example for multiple inputs:
+            def my_preprocessor(col1: pd.Series, col2: pd.Series) -> pd.Series:
+                return col1 + " delimeter " + col2
 
         Args:
-            pre_processor: A function that takes a single value from the
-                input column and returns a processed value.
+            pre_processor: A vectorized function that takes one or more pandas
+                Series and returns a single pandas Series.
 
         Returns:
             The handler instance for method chaining.
@@ -148,17 +171,43 @@ class BaseModelHandler(ABC):
             A configured Pandas UDF.
         """
 
-        @pandas_udf(returnType=self._return_type)
         def _apply_predict_model_internal(
-            series_iter: Iterator[pd.Series],
+            series_iter: Iterator[Any],
         ) -> Iterator[pd.Series]:
+            """The internal UDF logic that runs on Spark executors."""
             model = self._load_model()
-            for series in series_iter:
-                if self._pre_processor:
-                    series = series.apply(self._pre_processor)
-                yield model.call(series)
+            for batch_input in series_iter:
+                # PySpark's Pandas UDF behavior:
+                # - For a single input column, it yields the pd.Series directly.
+                # - For multiple input columns, it yields a tuple of pd.Series.
+                # We normalize this to always be a tuple for preprocessor.
+                if isinstance(batch_input, pd.Series):
+                    series_tuple = (batch_input,)
+                else:
+                    series_tuple = batch_input
 
-        return _apply_predict_model_internal
+                if self._pre_processor:
+                    # The pre_processor combines columns.
+                    processed_series = self._pre_processor(*series_tuple)
+                else:
+                    # If no pre_processor, we can only handle a single column.
+                    processed_series = series_tuple[0]
+                yield model.call(processed_series)
+
+        # Set the correct type hint for the UDF based on the number of input
+        # columns, which is required by PySpark's Pandas UDF implementation.
+        if len(self._input_cols) > 1:
+            _apply_predict_model_internal.__annotations__["series_iter"] = (
+                Iterator[Tuple[pd.Series, ...]]
+            )
+        else:
+            _apply_predict_model_internal.__annotations__["series_iter"] = (
+                Iterator[pd.Series]
+            )
+
+        return pandas_udf(
+            _apply_predict_model_internal, returnType=self._return_type
+        )
 
     def transform(self, df: DataFrame) -> DataFrame:
         """Transforms a DataFrame by applying the model.
@@ -175,12 +224,19 @@ class BaseModelHandler(ABC):
         Raises:
             ValueError: If the input or output column is not set.
         """
-        if not self._input_col:
-            raise ValueError("Input column must be set using .input_col().")
+        if not self._input_cols:
+            raise ValueError("Input column(s) must be set using .input_cols().")
         if not self._output_col:
             raise ValueError("Output column must be set using .output_col().")
 
+        if len(self._input_cols) > 1 and not self._pre_processor:
+            raise ValueError(
+                "A pre_processor must be provided when using multiple input "
+                "columns to combine them into a single series for the model "
+                "input."
+            )
+
         return df.withColumn(
             self._output_col,
-            self._create_predict_udf()(col(self._input_col)),
+            self._create_predict_udf()(*[col(c) for c in self._input_cols]),
         )

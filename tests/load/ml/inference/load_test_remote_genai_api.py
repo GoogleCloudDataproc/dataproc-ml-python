@@ -67,7 +67,7 @@ class GenAITestSuite(unittest.TestCase):
             GenAiModelHandler()
             .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
             .location(os.getenv("GOOGLE_CLOUD_REGION"))
-            .input_col("word")
+            .input_cols("word")
             .output_col("explanation")
             .pre_processor(
                 lambda word: "Explain the word in plain english: " + word

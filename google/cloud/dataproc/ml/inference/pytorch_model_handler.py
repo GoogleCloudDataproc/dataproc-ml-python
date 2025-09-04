@@ -180,7 +180,8 @@ class PyTorchModelHandler(BaseModelHandler):
 
     Required Configuration:
         - `.model_path(str)`: The GCS path to the model file (`.pt`, `.pth`).
-        - `.input_col(str)`: The column in the DataFrame to use as input.
+        - `.input_cols(str, ...)`: The column(s) in the DataFrame to use as
+          input.
         - `.set_model_architecture(...)`: This is **required** when loading from
           a state dict, but should **not** be used when loading a full model.
 
@@ -198,7 +199,7 @@ class PyTorchModelHandler(BaseModelHandler):
         >>> result_df = (
         ...     PyTorchModelHandler()
         ...     .model_path("gs://test-bucket/test-model.pt")
-        ...     .input_col("input_col")
+        ...     .input_cols("input_col")
         ...     .output_col("prediction")
         ...     .transform(input_df)
         ... )
@@ -212,7 +213,7 @@ class PyTorchModelHandler(BaseModelHandler):
         ...     PyTorchModelHandler()
         ...     .model_path("gs://my-bucket/resnet18_statedict.pt")
         ...     .set_model_architecture(model_class, **model_kwargs)
-        ...     .input_col("features")
+        ...     .input_cols("features")
         ...     .output_col("predictions")
         ...     .transform(input_df)
         ... )

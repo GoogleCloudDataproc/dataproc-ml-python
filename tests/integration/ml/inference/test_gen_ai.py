@@ -15,6 +15,7 @@
 import os
 import unittest
 import json
+import pandas as pd
 
 from pyspark.errors.exceptions.captured import PythonException
 from pyspark.sql import SparkSession, DataFrame
@@ -60,17 +61,18 @@ class TestGenAiModelHandler(unittest.TestCase):
         cls.spark.stop()
 
     def test_pre_processor(self):
-        def get_prompt(city: str):
+        def get_prompt(city: pd.Series) -> pd.Series:
             return (
-                f"What is the airport code of largest airport in {city}? "
-                "Answer in single word."
+                "What is the airport code of largest airport in "
+                + city
+                + "? Answer in single word."
             )
 
         gen_ai_handler = (
             GenAiModelHandler()
             .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
             .location(os.getenv("GOOGLE_CLOUD_REGION"))
-            .input_col("city")
+            .input_cols("city")
             .pre_processor(get_prompt)
         )
 
@@ -87,6 +89,22 @@ class TestGenAiModelHandler(unittest.TestCase):
             .prompt(
                 "What is the airport code of largest airport in {city}? "
                 "Answer in single word."
+            )
+        )
+
+        df = gen_ai_handler.transform(self.df)
+        self._assert_dataframe_equals(
+            df.select("city", "predictions"), self.expected
+        )
+
+    def test_prompt_template_multiple_cols(self):
+        gen_ai_handler = (
+            GenAiModelHandler()
+            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
+            .location(os.getenv("GOOGLE_CLOUD_REGION"))
+            .prompt(
+                "We are visiting {city}. What is the airport code of the "
+                "largest airport in {city}, {country}? Answer in a single word."
             )
         )
 
@@ -183,7 +201,7 @@ class TestGenAiModelHandler(unittest.TestCase):
             .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
             .location(os.getenv("GOOGLE_CLOUD_REGION"))
             .model("gemini-xyz-4")
-            .input_col("city")
+            .input_cols("city")
         )
 
         with self.assertRaises(PythonException) as e:

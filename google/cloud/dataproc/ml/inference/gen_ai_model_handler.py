@@ -94,6 +94,8 @@ class GeminiModel(Model):
         retry the entire task.
         """
         logger.info("Processing batch of size %s", batch.size)
+        if not batch.empty:
+            logger.debug("Sample prompt: '%s'", batch.iloc[0])
 
         responses = asyncio.run(self._process_batch_async(batch.tolist()))
 
@@ -116,8 +118,8 @@ class GenAiModelHandler(BaseModelHandler):
     Required Configuration:
         - `.project(str)`: Your Google Cloud project ID.
         - `.location(str)`: The GCP region for the Vertex AI API call.
-        - `.prompt(str)`: A prompt template with a single placeholder for an
-          input column (e.g., "Summarize: {text_col}").
+        - `.prompt(str)`: A prompt template with one or more placeholders for
+          input column/s (e.g., "Compare these two texts {col1} & {col2}").
 
     Optional Configuration:
         - `.model(str)`: The model to use (defaults to "gemini-2.5-flash").
@@ -229,47 +231,58 @@ class GenAiModelHandler(BaseModelHandler):
         """Configures the handler using a string template for the prompt.
 
         This method parses a string template (e.g., "Summarize this:
-        {text_column}") to automatically identify the input column of the
-        dataframe and create the necessary pre-processor. It requires templates
-        with exactly one placeholder.
+        {text_column}") to automatically identify the input column(s) of the
+        dataframe and create the necessary vectorized pre-processor. It supports
+        one or more placeholders.
 
         Args:
-            prompt_template: A string with a single named placeholder, like
-                {column_name}.
+            prompt_template: A string with named placeholders, like
+                "Capital of {city} in {country}?".
 
         Returns:
             The handler instance for method chaining.
 
         Raises:
-            ValueError: If the prompt template does not contain exactly one
-                placeholder.
+            ValueError: If the prompt template contains no placeholders.
         """
-        param_names = [
-            field_name
-            for _, field_name, _, _ in string.Formatter().parse(prompt_template)
-            if field_name is not None
-        ]
-
-        if len(param_names) != 1:
-            if param_names:
-                recommendation = (
-                    "To use multiple columns in the prompt, first combine them "
-                    "into a new derived column using dataframe APIs."
-                )
-            else:
-                recommendation = (
-                    "Input to prompt should be dynamic based on each row."
-                )
-            raise ValueError(
-                "The prompt template must contain exactly one placeholder "
-                f"column, but found {len(param_names)}: {param_names}. "
-                f"{recommendation}"
+        # Get unique placeholders from the input string while preserving order.
+        param_names = list(
+            dict.fromkeys(
+                fname
+                for _, fname, _, _ in string.Formatter().parse(prompt_template)
+                if fname is not None
             )
-        col_name = param_names[0]
-        self.input_col(col_name)
-        self.pre_processor(
-            lambda col_val: prompt_template.format(**{col_name: col_val})
         )
+
+        if not param_names:
+            raise ValueError(
+                "The prompt template must contain at least one placeholder "
+                "column, but none were found. Example: 'Summarize: {text_col}'"
+            )
+
+        self.input_cols(*param_names)
+
+        def prompt_pre_processor(*series_args: pd.Series) -> pd.Series:
+            """Applies prompt template to series in a vectorized way."""
+
+            # Initialize with an empty Series that has the correct index.
+            result = pd.Series("", index=series_args[0].index, dtype=object)
+
+            series_map = {
+                name: col_series.astype(str)
+                for name, col_series in zip(param_names, series_args)
+            }
+
+            for literal, field, _, _ in string.Formatter().parse(
+                prompt_template
+            ):
+                if literal:
+                    result += literal
+                if field:
+                    result += series_map[field]
+            return result
+
+        self.pre_processor(prompt_pre_processor)
         return self
 
     def generation_config(

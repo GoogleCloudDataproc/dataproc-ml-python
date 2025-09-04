@@ -186,7 +186,8 @@ class TensorFlowModelHandler(BaseModelHandler):
 
     Required Configuration:
         - `.model_path(str)`: The GCS path to the model directory or file.
-        - `.input_col(str)`: The column in the DataFrame to use as input.
+        - `.input_cols(str, ...)`: The column(s) in the DataFrame to use as
+          input.
         - `.set_model_architecture(...)`: This is **required** when loading from
           a weights file, but should **not** be used when loading a SavedModel.
 
@@ -203,7 +204,7 @@ class TensorFlowModelHandler(BaseModelHandler):
         >>> result_df = (
         ...     TensorFlowModelHandler()
         ...     .model_path("gs://test-bucket/test-model-saved-dir")
-        ...     .input_col("input_col")
+        ...     .input_cols("input_col")
         ...     .transform(input_df)
         ... )
 
@@ -213,7 +214,7 @@ class TensorFlowModelHandler(BaseModelHandler):
         ...     TensorFlowModelHandler()
         ...     .model_path("gs://test-bucket/test-model-checkpoint.h5")
         ...     .set_model_architecture(model_class, **model_kwargs)
-        ...     .input_col("input_col")
+        ...     .input_cols("input_col")
         ...     .transform(input_df)
         ... )
     """

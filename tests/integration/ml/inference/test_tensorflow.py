@@ -18,6 +18,7 @@ import shutil
 import unittest
 import uuid
 
+import pandas as pd
 import numpy as np
 import tensorflow as tf
 from pyspark.errors.exceptions.captured import PythonException
@@ -31,10 +32,17 @@ from tests.utils.gcs_util import (
     upload_directory_to_gcs,
 )
 from tests.utils.tensorflow_util import (
-    preprocess_for_mobilenetv2,
+    preprocess_for_mobilenetv2 as scalar_preprocess_for_mobilenetv2,
     save_model_as_savedmodel,
     save_model_as_checkpoint,
 )
+
+
+def vectorized_preprocess_for_mobilenetv2(
+    image_bytes_series: pd.Series,
+) -> pd.Series:
+    """Vectorized preprocessor for MobileNetV2."""
+    return image_bytes_series.apply(scalar_preprocess_for_mobilenetv2)
 
 
 class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
@@ -67,7 +75,7 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
         with open(imagenet_labels_path, "r", encoding="utf-8") as f:
             cls.imagenet_categories = f.read().splitlines()
 
-        input_tensor = preprocess_for_mobilenetv2(cls.sample_image_bytes)
+        input_tensor = scalar_preprocess_for_mobilenetv2(cls.sample_image_bytes)
         input_tensor = tf.expand_dims(input_tensor, axis=0)
         output_tensor = cls.actual_model_mobilenet(input_tensor)
         predicted_idx = tf.argmax(output_tensor, axis=1).numpy().item()
@@ -118,9 +126,9 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
 
         handler = (
             self.handler.model_path(gcs_saved_model_path)
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
-            .pre_processor(preprocess_for_mobilenetv2)
+            .pre_processor(vectorized_preprocess_for_mobilenetv2)
             .set_return_type(ArrayType(FloatType()))
         )
 
@@ -164,9 +172,9 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
             .set_model_architecture(
                 tf.keras.applications.MobileNetV2, weights=None
             )
-            .input_col("image_bytes")
+            .input_cols("image_bytes")
             .output_col("predictions")
-            .pre_processor(preprocess_for_mobilenetv2)
+            .pre_processor(vectorized_preprocess_for_mobilenetv2)
             .set_return_type(ArrayType(FloatType()))
         )
 
@@ -187,7 +195,7 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
         non_existent_path = (
             f"gs://{self.TEST_GCS_BUCKET}/this-path-does-not-exist/"
         )
-        handler = self.handler.model_path(non_existent_path).input_col(
+        handler = self.handler.model_path(non_existent_path).input_cols(
             "image_bytes"
         )
         df = self.spark.createDataFrame(
@@ -221,7 +229,7 @@ class TestTensorFlowModelHandlerIntegration(unittest.TestCase):
             checkpoint_gcs_dir, os.path.basename(local_weights_filepath)
         )
 
-        handler = self.handler.model_path(gcs_weights_path).input_col(
+        handler = self.handler.model_path(gcs_weights_path).input_cols(
             "image_bytes"
         )
 

@@ -279,39 +279,47 @@ class TestGenAiModelHandler(unittest.TestCase):
         template = "What is the capital of {country}?"
         self.handler.prompt(template)
 
-        self.assertEqual(self.handler._input_col, "country")
+        self.assertEqual(self.handler._input_cols, ("country",))
         self.assertIsNotNone(self.handler._pre_processor)
 
-        # Test the pre-processor function
-        processed_prompt = self.handler._pre_processor("France")
-        self.assertEqual(processed_prompt, "What is the capital of France?")
+        # Test the pre-processor function with a pandas Series
+        input_series = pd.Series(["France", "Japan"], index=[0, 1])
+        processed_series = self.handler._pre_processor(input_series)
+        expected_series = pd.Series(
+            ["What is the capital of France?", "What is the capital of Japan?"],
+            index=[0, 1],
+        )
+        pd.testing.assert_series_equal(processed_series, expected_series)
 
     def test_prompt_with_no_placeholders_raises_error(self):
         """Tests prompt() raises ValueError for no placeholders."""
         template = "This is a static prompt."
         with self.assertRaisesRegex(
             ValueError,
-            (
-                r"The prompt template must contain exactly one placeholder "
-                r"column, but found 0: \[\]. Input to prompt should be "
-                r"dynamic based on each row."
-            ),
+            "The prompt template must contain at least one placeholder column",
         ):
             self.handler.prompt(template)
 
-    def test_prompt_with_multiple_placeholders_raises_error(self):
-        """Tests prompt() raises ValueError for multiple placeholders."""
-        template = "What is the population of {city} in {country}?"
-        with self.assertRaisesRegex(
-            ValueError,
-            (
-                r"The prompt template must contain exactly one placeholder "
-                r"column, but found 2: \['city', 'country'\]. To use "
-                r"multiple columns in the prompt, first combine them into a "
-                r"new derived column using dataframe APIs."
-            ),
-        ):
-            self.handler.prompt(template)
+    def test_prompt_with_multiple_placeholders_succeeds(self):
+        """Tests prompt() succeeds with multiple placeholders."""
+        template = "{country}: What is the population of {city} in {country}?"
+        self.handler.prompt(template)
+
+        self.assertEqual(self.handler._input_cols, ("country", "city"))
+        self.assertIsNotNone(self.handler._pre_processor)
+
+        # Test the pre-processor function with multiple pandas Series
+        countries = pd.Series(["France", "Japan"], index=[0, 1])
+        cities = pd.Series(["Paris", "Tokyo"], index=[0, 1])
+        processed_series = self.handler._pre_processor(countries, cities)
+        expected_series = pd.Series(
+            [
+                "France: What is the population of Paris in France?",
+                "Japan: What is the population of Tokyo in Japan?",
+            ],
+            index=[0, 1],
+        )
+        pd.testing.assert_series_equal(processed_series, expected_series)
 
     @patch(f"{GEN_AI_HANDLER_PATH}.aiplatform")
     @patch(f"{GEN_AI_HANDLER_PATH}.GeminiModel")

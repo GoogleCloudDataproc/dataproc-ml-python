@@ -82,14 +82,9 @@ class TestGenAiModelHandler(unittest.TestCase):
         )
 
     def test_prompt_template(self):
-        gen_ai_handler = (
-            GenAiModelHandler()
-            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
-            .location(os.getenv("GOOGLE_CLOUD_REGION"))
-            .prompt(
-                "What is the airport code of largest airport in {city}? "
-                "Answer in single word."
-            )
+        gen_ai_handler = GenAiModelHandler().prompt(
+            "What is the airport code of largest airport in {city}? "
+            "Answer in single word."
         )
 
         df = gen_ai_handler.transform(self.df)
@@ -98,14 +93,9 @@ class TestGenAiModelHandler(unittest.TestCase):
         )
 
     def test_prompt_template_multiple_cols(self):
-        gen_ai_handler = (
-            GenAiModelHandler()
-            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
-            .location(os.getenv("GOOGLE_CLOUD_REGION"))
-            .prompt(
-                "We are visiting {city}. What is the airport code of the "
-                "largest airport in {city}, {country}? Answer in a single word."
-            )
+        gen_ai_handler = GenAiModelHandler().prompt(
+            "We are visiting {city}. What is the airport code of the "
+            "largest airport in {city}, {country}? Answer in a single word."
         )
 
         df = gen_ai_handler.transform(self.df)
@@ -116,8 +106,6 @@ class TestGenAiModelHandler(unittest.TestCase):
     def test_generation_config(self):
         gen_ai_handler = (
             GenAiModelHandler()
-            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
-            .location(os.getenv("GOOGLE_CLOUD_REGION"))
             .prompt(
                 "What is the airport code of largest airport in {city}? "
                 "Answer in single word."
@@ -170,8 +158,6 @@ class TestGenAiModelHandler(unittest.TestCase):
         }
         gen_ai_handler = (
             GenAiModelHandler()
-            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
-            .location(os.getenv("GOOGLE_CLOUD_REGION"))
             .prompt(
                 "Please extract information for the following item: {request}"
             )
@@ -197,11 +183,7 @@ class TestGenAiModelHandler(unittest.TestCase):
 
     def test_unsupported_model_name_raises_exception(self):
         gen_ai_handler = (
-            GenAiModelHandler()
-            .project(os.getenv("GOOGLE_CLOUD_PROJECT"))
-            .location(os.getenv("GOOGLE_CLOUD_REGION"))
-            .model("gemini-xyz-4")
-            .input_cols("city")
+            GenAiModelHandler().model("gemini-xyz-4").input_cols("city")
         )
 
         with self.assertRaises(PythonException) as e:

@@ -115,20 +115,37 @@ class GenAiModelHandler(BaseModelHandler):
     Google's Gemini generative models to data in a distributed manner using
     Spark. It uses a builder pattern for configuration.
 
+    It automatically authenticates and discovers the project and location from
+    the environment if not explicitly provided, making it seamless to use within
+    Dataproc or other configured GCP environments.
+
     Required Configuration:
-        - `.project(str)`: Your Google Cloud project ID.
-        - `.location(str)`: The GCP region for the Vertex AI API call.
-        - `.prompt(str)`: A prompt template with one or more placeholders for
-          input column/s (e.g., "Compare these two texts {col1} & {col2}").
+        - Input specification via one of the following methods:
+          - `.prompt(str)`: A prompt template with one or more placeholders for
+            input column/s (e.g., "Compare these two texts {col1} & {col2}").
+          - `.input_cols(...)` and `.pre_processor(...)`: For more complex
+            prompt construction logic.
 
     Optional Configuration:
+        - `.project(str)`: Your Google Cloud project ID. If not set, it's
+          inferred from the environment.
+        - `.location(str)`: The GCP region for the Vertex AI API call. If not
+          set, it's inferred from the environment.
         - `.model(str)`: The model to use (defaults to "gemini-2.5-flash").
         - `.output_col(str)`: The name of the prediction output column
           (defaults to "predictions").
         - Other methods like `generation_config`,`max_concurrent_requests`, etc.
 
     Example:
+        >>> # Assumes project and location are discoverable from the environment
         >>> result_df = (
+        ...     GenAiModelHandler()
+        ...     .prompt("What is the capital of {city} in single word?")
+        ...     .transform(df)
+        ... )
+        >>>
+        >>> # Explicitly setting all configurations
+        >>> result_df_explicit = (
         ...     GenAiModelHandler()
         ...     .project("my-gcp-project")
         ...     .location("us-central1")
@@ -206,6 +223,9 @@ class GenAiModelHandler(BaseModelHandler):
     def project(self, project: str) -> "GenAiModelHandler":
         """Sets the Google Cloud project for the Vertex AI API call.
 
+        If not provided, the project is inferred from the environment, which is
+        useful when running on Dataproc or other GCP services.
+
         Args:
             project: The GCP project ID.
 
@@ -217,6 +237,9 @@ class GenAiModelHandler(BaseModelHandler):
 
     def location(self, location: str) -> "GenAiModelHandler":
         """Sets the Google Cloud location (region) for the Vertex AI API call.
+
+        If not provided, the location is inferred from the environment, which is
+        useful when running on Dataproc or other GCP services.
 
         Args:
             location: The GCP location (e.g., "us-central1").
@@ -334,14 +357,6 @@ class GenAiModelHandler(BaseModelHandler):
 
     def _load_model(self) -> Model:
         """Loads the GeminiModel instance on each Spark executor."""
-        if not self._project:
-            raise ValueError(
-                "Project must be set using .project(project_name)."
-            )
-        if not self._location:
-            raise ValueError(
-                "Location must be set using .location(location_name)."
-            )
         if self._provider is ModelProvider.GOOGLE:
             aiplatform.init(project=self._project, location=self._location)
             logger.debug("Creating GenerativeModel client for calls to Gemini")

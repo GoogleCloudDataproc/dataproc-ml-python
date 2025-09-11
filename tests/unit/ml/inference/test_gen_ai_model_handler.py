@@ -376,18 +376,6 @@ class TestGenAiModelHandler(unittest.TestCase):
         )
         self.assertEqual(loaded_model, mock_gemini_model.return_value)
 
-    def test_load_model_missing_project_raises_error(self):
-        """Test that _load_model raises ValueError if project is not set."""
-        self.handler.location("us-central1")
-        with self.assertRaisesRegex(ValueError, "Project must be set"):
-            self.handler._load_model()
-
-    def test_load_model_missing_location_raises_error(self):
-        """Test that _load_model raises ValueError if location is not set."""
-        self.handler.project("my-project")
-        with self.assertRaisesRegex(ValueError, "Location must be set"):
-            self.handler._load_model()
-
 
 if __name__ == "__main__":
     unittest.main()

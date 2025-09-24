@@ -20,7 +20,7 @@ import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import StringType
 
-from google.cloud.dataproc.ml.inference.base_model_handler import (
+from google.cloud.dataproc_ml.inference.base_model_handler import (
     BaseModelHandler,
     Model,
 )

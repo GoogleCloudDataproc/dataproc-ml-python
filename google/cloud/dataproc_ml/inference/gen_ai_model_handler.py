@@ -24,7 +24,7 @@ import pandas as pd
 import tenacity
 from google.api_core import exceptions
 from google.cloud import aiplatform
-from google.cloud.dataproc.ml.inference.base_model_handler import (
+from google.cloud.dataproc_ml.inference.base_model_handler import (
     BaseModelHandler,
     Model,
 )

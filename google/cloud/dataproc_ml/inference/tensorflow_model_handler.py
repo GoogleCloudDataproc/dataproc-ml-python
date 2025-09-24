@@ -23,7 +23,7 @@ import tensorflow as tf
 from pyspark.sql.types import ArrayType, FloatType
 
 from google.api_core import exceptions as gcp_exceptions
-from google.cloud.dataproc.ml.inference.base_model_handler import (
+from google.cloud.dataproc_ml.inference.base_model_handler import (
     BaseModelHandler,
     Model,
 )

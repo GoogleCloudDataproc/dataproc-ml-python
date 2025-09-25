@@ -3,6 +3,7 @@
   <h1>Dataproc ML</h1>
 </div>
 
+[![PyPI version](https://img.shields.io/pypi/v/dataproc-ml)](https://pypi.org/project/dataproc-ml/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 > **Public Preview Disclaimer**
@@ -25,7 +26,9 @@ Here are a couple of examples demonstrating how to use the handlers for distribu
 
 ### Generative AI (Gemini) Model Inference
 
-> **Note:** Using the `GenAiModelHandler` involves making API calls to Vertex AI, which will incur costs. Please review the Vertex AI Generative AI pricing.
+> **Note:** Using the `GenAiModelHandler` involves making API calls to 
+> Vertex AI, which will incur costs. Please review the [Vertex AI Generative 
+> AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing).
 
 Use Google's Gemini models to perform generative tasks on your data.
 This example uses a prompt template to ask for the capital of countries listed in a Spark DataFrame.
@@ -100,7 +103,7 @@ please refer to our official [documentation](https://dataproc-ml.readthedocs.io/
 
 ## Contributing
 
-Contributions are welcome! Please see CONTRIBUTING.md for details on how to 
+Contributions are welcome! Please see contributing.md for details on how to 
 set up your development environment, run linters/tests, etc.
 
 ## License

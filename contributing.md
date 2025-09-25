@@ -45,7 +45,7 @@ Guidelines](https://opensource.google/conduct/).
    pass before raising the PR
     ```shell
     pyink .
-    pylint google/
+    pylint google/cloud/dataproc_ml
     pylint --disable=protected-access,missing-function-docstring,missing-module-docstring,missing-class-docstring tests/
     pytest .
     ```

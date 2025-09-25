@@ -5,7 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dataproc-ml"
 version = "0.1.0"
+authors = [{ name = "Google LLC" }]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 description = "A python library to ease MLOps for Dataproc customers"
+license = "Apache-2.0"
+license-files = ["LICENSE*"]
 readme = "README.md"
 requires-python = ">=3.11"
 # Aligned with environment of Cloud Dataproc 2.3 for GCE-ML/serverless image
@@ -19,6 +29,11 @@ dependencies = [
     "tensorflow>=2.17.0, <2.20.0",
     "torch>=2.6.0, <3.0.0"
 ]
+
+[project.urls]
+Homepage = "https://github.com/GoogleCloudDataproc/dataproc-ml-python"
+Documentation = "https://dataproc-ml.readthedocs.io/"
+Issues = "https://github.com/GoogleCloudDataproc/dataproc-ml-python/issues"
 
 [project.optional-dependencies]
 test = [

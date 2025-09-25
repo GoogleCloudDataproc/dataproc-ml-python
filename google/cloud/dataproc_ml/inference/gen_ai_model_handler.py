@@ -119,6 +119,11 @@ class GenAiModelHandler(BaseModelHandler):
     the environment if not explicitly provided, making it seamless to use within
     Dataproc or other configured GCP environments.
 
+    .. note::
+        Using this handler will incur costs from calling the Vertex AI API.
+        Please see details at `Vertex AI Generative AI pricing
+        <https://cloud.google.com/vertex-ai/generative-ai/pricing>`_ page.
+
     Required Configuration:
         - Input specification via one of the following methods:
           - `.prompt(str)`: A prompt template with one or more placeholders for

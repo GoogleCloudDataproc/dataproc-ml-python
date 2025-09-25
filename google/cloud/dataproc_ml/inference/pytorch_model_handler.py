@@ -21,9 +21,9 @@ import numpy as np
 import pandas as pd
 import torch
 
-from google.cloud.dataproc.ml.inference.base_model_handler import BaseModelHandler
-from google.cloud.dataproc.ml.inference.base_model_handler import Model
-from google.cloud.dataproc.ml._utils._gcs_utils import (
+from google.cloud.dataproc_ml.inference.base_model_handler import BaseModelHandler
+from google.cloud.dataproc_ml.inference.base_model_handler import Model
+from google.cloud.dataproc_ml._utils._gcs_utils import (
     download_gcs_blob_to_buffer,
 )
 

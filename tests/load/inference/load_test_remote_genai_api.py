@@ -18,7 +18,7 @@ import unittest
 
 from pyspark.sql import SparkSession
 
-from google.cloud.dataproc.ml.inference import GenAiModelHandler
+from google.cloud.dataproc_ml.inference import GenAiModelHandler
 
 # --- Constants for configuration ---
 # Total number of prompts to send to the Gemini API.

@@ -1,6 +1,6 @@
-.. dataproc-ml-python documentation master file.
+.. dataproc-ml documentation master file.
 
-Welcome to dataproc-ml-python's documentation!
+Welcome to dataproc-ml's documentation!
 ==============================================
 
 This library provides high-level handlers to simplify running distributed

@@ -14,7 +14,7 @@
 
 import unittest
 
-from google.cloud.dataproc.ml.inference import PyTorchModelHandler
+from google.cloud.dataproc_ml.inference import PyTorchModelHandler
 
 
 class TestPyTorchModelHandler(unittest.TestCase):

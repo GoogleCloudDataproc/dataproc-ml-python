@@ -27,7 +27,7 @@ from pyspark.sql.types import ArrayType, FloatType
 from torchvision.models import resnet18
 
 from google.cloud import storage, exceptions as gcloud_exceptions
-from google.cloud.dataproc.ml.inference import PyTorchModelHandler
+from google.cloud.dataproc_ml.inference import PyTorchModelHandler
 from tests.utils.gcs_util import download_image_from_gcs
 from tests.utils.pytorch_util import (
     preprocess_real_image_data as scalar_preprocess_real_image_data,

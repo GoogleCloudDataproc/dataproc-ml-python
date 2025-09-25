@@ -19,14 +19,14 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 from google.api_core import exceptions as gcp_exceptions
-from google.cloud.dataproc.ml.inference.tensorflow_model_handler import (
+from google.cloud.dataproc_ml.inference.tensorflow_model_handler import (
     TensorFlowModel,
     TensorFlowModelHandler,
 )
 
 # Assume the handler code is in a file accessible by this path
 TENSORFLOW_HANDLER_PATH = (
-    "google.cloud.dataproc.ml.inference.tensorflow_model_handler"
+    "google.cloud.dataproc_ml.inference.tensorflow_model_handler"
 )
 
 

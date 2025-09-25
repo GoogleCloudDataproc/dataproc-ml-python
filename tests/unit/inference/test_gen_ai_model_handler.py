@@ -20,7 +20,7 @@ import pandas as pd
 import tenacity
 
 from google.api_core import exceptions
-from google.cloud.dataproc.ml.inference.gen_ai_model_handler import (
+from google.cloud.dataproc_ml.inference.gen_ai_model_handler import (
     GenAiModelHandler,
     GeminiModel,
     ModelProvider,
@@ -29,7 +29,7 @@ from pyspark.sql.types import StringType
 from vertexai.generative_models import GenerationConfig
 
 # The path for patching must be where the object is *looked up*.
-GEN_AI_HANDLER_PATH = "google.cloud.dataproc.ml.inference.gen_ai_model_handler"
+GEN_AI_HANDLER_PATH = "google.cloud.dataproc_ml.inference.gen_ai_model_handler"
 
 
 class TestGeminiModel(unittest.TestCase):

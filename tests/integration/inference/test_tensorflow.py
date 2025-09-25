@@ -26,7 +26,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import ArrayType, FloatType
 
 from google.cloud import storage, exceptions as gcloud_exceptions
-from google.cloud.dataproc.ml.inference import TensorFlowModelHandler
+from google.cloud.dataproc_ml.inference import TensorFlowModelHandler
 from tests.utils.gcs_util import (
     download_image_from_gcs,
     upload_directory_to_gcs,

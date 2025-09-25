@@ -19,7 +19,7 @@ import pandas as pd
 
 from pyspark.errors.exceptions.captured import PythonException
 from pyspark.sql import SparkSession, DataFrame
-from google.cloud.dataproc.ml.inference import GenAiModelHandler
+from google.cloud.dataproc_ml.inference import GenAiModelHandler
 from vertexai.generative_models import GenerationConfig
 
 

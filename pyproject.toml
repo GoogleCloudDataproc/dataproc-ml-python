@@ -38,8 +38,8 @@ Issues = "https://github.com/GoogleCloudDataproc/dataproc-ml-python/issues"
 [project.optional-dependencies]
 test = [
     "pytest",
-    "torchvision~=0.21.0",
-    "pillow~=11.3.0",
+    "torchvision>=0.21.0, <1.0.0",
+    "pillow>=11.3.0, <12.0.0",
 ]
 dev = [
     "pyink",

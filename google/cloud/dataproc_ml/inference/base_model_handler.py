@@ -19,7 +19,6 @@ from typing import Any, Callable, Iterator, Tuple
 
 import pandas as pd
 from pyspark.sql import DataFrame
-from pyspark.sql.connect.dataframe import DataFrame as ConnectDataFrame
 from pyspark.sql.functions import pandas_udf, col
 from pyspark.sql.types import DataType, StructType
 
@@ -210,9 +209,7 @@ class BaseModelHandler(ABC):
             _apply_predict_model_internal, returnType=self._return_type
         )
 
-    def transform(
-        self, df: DataFrame | ConnectDataFrame
-    ) -> DataFrame | ConnectDataFrame:
+    def transform(self, df: DataFrame) -> DataFrame:
         """Transforms a DataFrame by applying the model.
 
         This is the main function that runs the model and appends its

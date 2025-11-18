@@ -4,29 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dataproc-ml"
-version = "0.1.0"
+version = "1.0.0-rc"
 authors = [{ name = "Google LLC" }]
 classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 description = "A python library to ease MLOps for Dataproc customers"
 license = "Apache-2.0"
 license-files = ["LICENSE*"]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 # Aligned with environment of Cloud Dataproc 2.3 for GCE-ML/serverless image
 dependencies = [
-    "google-cloud-aiplatform>=1.88.0, <2.0.0",
+    "google-cloud-aiplatform>=1.121.0, <2.0.0",
     "google-cloud-storage>=2.19.0, <3.0.0",
-    "pandas>=2.1.4, <3.0.0",
-    "pyarrow>=16.1.0, <17.0.0",
-    "pyspark>=3.5.3, <4.0.0",
+    "pandas>=2.3, <3.0.0",
+    "pyarrow>=19.0, <20.0.0",
+    "pyspark~=4.0.0",
     "tenacity>=8.5.0, <9.0.0",
-    "tensorflow>=2.17.0, <2.20.0",
+    "tensorflow>=2.18.0, <2.20.0",
     "torch>=2.6.0, <3.0.0"
 ]
 
@@ -53,6 +53,10 @@ docs = [
 
 [tool.pyink]
 line-length = 80 # Default is 88
+
+[tool.setuptools.packages.find]
+include = ["google*"]
+namespaces = true
 
 [tool.pytest.ini_options]
 addopts = "--ignore=load/"

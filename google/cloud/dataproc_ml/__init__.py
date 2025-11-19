@@ -12,4 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A subpackage for ml."""
+"""A python library to ease MLOps for Dataproc customers"""
+
+try:
+    import pyspark
+except ImportError:
+    raise ImportError(
+        "PySpark is not installed. The `dataproc-ml` library requires a Spark "
+        "environment.\n"
+        "Please install one of the following packages:\n"
+        "1. For standard Spark: pip install dataproc-ml[spark]\n"
+        "2. For Spark Connect:  pip install dataproc-ml[spark-connect]"
+    ) from None

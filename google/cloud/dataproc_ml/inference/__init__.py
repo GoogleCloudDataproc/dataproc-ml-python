@@ -17,5 +17,11 @@
 from .gen_ai_model_handler import GenAiModelHandler
 from .pytorch_model_handler import PyTorchModelHandler
 from .tensorflow_model_handler import TensorFlowModelHandler
+from .vertex_endpoint_handler import VertexEndpointHandler
 
-__all__ = ("GenAiModelHandler", "PyTorchModelHandler", "TensorFlowModelHandler")
+__all__ = (
+    "GenAiModelHandler",
+    "PyTorchModelHandler",
+    "VertexEndpointHandler",
+    "TensorFlowModelHandler",
+)

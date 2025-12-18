@@ -29,7 +29,7 @@ Guidelines](https://opensource.google/conduct/).
 1. It is recommended to do development in a separate virtual environment
 
     ```shell
-    python3.11 -m venv <your-env>
+    python3.12 -m venv <your-env>
     ```
 
 2. Install all the build, dev, test and docs dependencies

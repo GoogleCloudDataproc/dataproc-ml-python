@@ -23,10 +23,11 @@ from pyspark.sql.types import StringType
 from google.cloud.dataproc_ml.inference import VertexEndpointHandler
 
 
-def create_prompt(text_series: pd.Series) -> pd.Series:
+def create_prompt(cities: pd.Series, countries: pd.Series) -> pd.Series:
     """A pre-processor that wraps each text input in a dictionary with
     a 'prompt' key."""
-    return text_series.apply(lambda x: {"prompt": x, "max_tokens": 256})
+    prompt_series = "Describe" + cities + " in " + countries
+    return prompt_series.apply(lambda x: {"prompt": x, "max_tokens": 256})
 
 
 def test_vertex_endpoint_handler():
@@ -43,15 +44,15 @@ def test_vertex_endpoint_handler():
 
     # Create a sample DataFrame with feature vectors
     data = [
-        ("Write a paragraph on India.",),
-        ("Who is James Bond?",),
+        ("Delhi", "India"),
+        ("Beijing", "China"),
     ]
-    df = spark.createDataFrame(data, ["features"])
+    df = spark.createDataFrame(data, ["city", "country"])
 
     # Configure and apply the handler
     handler = (
         VertexEndpointHandler(endpoint=endpoint_name)
-        .input_cols("features")
+        .input_cols("city", "country")
         .output_col("predictions")
         .use_dedicated_endpoint(True)
         .pre_processor(create_prompt)

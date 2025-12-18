@@ -57,7 +57,7 @@ class VertexEndpoint(Model):
         aiplatform.init(project=project, location=location)
         self.endpoint_client = aiplatform.Endpoint(endpoint_name=endpoint)
         self.predict_parameters = predict_parameters
-        self.batch_size = batch_size
+        self.batch_size = batch_size if batch_size is not None else 10
         self.use_dedicated_endpoint = use_dedicated_endpoint
 
     def call(self, batch: pd.Series) -> pd.Series:
@@ -88,7 +88,62 @@ class VertexEndpoint(Model):
 
 class VertexEndpointHandler(BaseModelHandler):
     """A handler for running inference with a deployed model on a
-    Vertex AI Endpoint."""
+    Vertex AI Endpoint.
+
+    This class extends `BaseModelHandler` to provide a convenient way to run
+    inference on a Spark DataFrame using a model deployed to a Vertex AI
+    Endpoint.
+
+    It automatically authenticates and discovers the project and location from
+    the environment if not explicitly provided, making it seamless to use within
+    Dataproc or other configured GCP environments.
+
+    .. note::
+        Using this handler will incur costs from using Vertex AI Endpoints.
+        Please see details at the `Vertex AI pricing
+        <https://cloud.google.com/vertex-ai/pricing#prediction-and-explanation>`_
+        page.
+
+    Required Configuration:
+        - `endpoint (str)`: The name of the Vertex AI Endpoint, provided during
+          initialization.
+        - `.input_cols(...)`: The names of the input columns from the DataFrame.
+
+    Optional Configuration:
+        - `.project(str)`: Your Google Cloud project ID. If not set, it's
+          inferred from the environment.
+        - `.location(str)`: The GCP region for the Vertex AI API call. If not
+          set, it's inferred from the environment.
+        - `.output_col(str)`: The name of the prediction output column
+          (defaults to "predictions").
+        - `.predict_parameters(Dict)`: Parameters for the prediction call.
+        - `.batch_size(int)`: The number of instances to include in each
+          prediction request (defaults to 10).
+        - `.use_dedicated_endpoint(bool)`: Whether to use a dedicated endpoint
+          for prediction (defaults to False).
+        - `.pre_processor(Callable)`: A function to transform input columns
+          before sending them to the model.
+        - `.set_return_type(DataType)`: The Spark data type of the prediction
+          output.
+
+    Example:
+        >>> def create_prompt(text_series: pd.Series) -> pd.Series:
+        ...     # Wraps each text input in a dictionary required by the endpoint
+        ...     return text_series.apply(
+        ...         lambda x: {"prompt": x, "max_tokens": 256}
+        ...     )
+        >>>
+        >>> handler = (
+        ...     VertexEndpointHandler(endpoint="my-endpoint-name")
+        ...     .project("my-gcp-project")
+        ...     .location("us-central1")
+        ...     .input_cols("features")
+        ...     .output_col("predictions")
+        ...     .pre_processor(create_prompt)
+        ...     .set_return_type(StringType())
+        ... )
+        >>> result_df = handler.transform(df)
+    """
 
     def __init__(self, endpoint: str):
         super().__init__()

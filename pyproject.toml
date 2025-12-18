@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dataproc-ml"
-version = "1.0.0-rc"
+version = "1.0.0rc1"
 authors = [{ name = "Google LLC" }]
 classifiers = [
     "Intended Audience :: Developers",
@@ -42,10 +42,7 @@ test = [
     # For running tests, a full pyspark installation is needed.
     "pyspark~=4.0.0",
 ]
-spark = ["pyspark~=4.0.0"]
-spark-connect = [
-    "pyspark-client~=4.0.0",
-]
+
 dev = [
     "pyink",
     "pylint",

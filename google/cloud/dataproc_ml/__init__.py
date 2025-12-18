@@ -21,6 +21,6 @@ except ImportError:
         "PySpark is not installed. The `dataproc-ml` library requires a Spark "
         "environment.\n"
         "Please install one of the following packages:\n"
-        "1. For standard Spark: pip install dataproc-ml[spark]\n"
-        "2. For Spark Connect:  pip install dataproc-ml[spark-connect]"
+        "1. For standard Spark: pip install pyspark\n"
+        "2. For Spark Connect:  pip install pyspark-client"
     ) from None
